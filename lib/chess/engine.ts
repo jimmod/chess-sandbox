@@ -22,12 +22,83 @@ export const emptyPockets = (): Pockets => ({ w: { p: 0, n: 0, b: 0, r: 0, q: 0 
 export type Move = { drop?: PocketKind; from: number; to: number; promotion?: Kind; ep?: number; rook?: [number, number] };
 export type Position = { pockets?: Pockets; board: (Piece | null)[]; turn: Color; rights: string; ep: number | null; halfmove: number; ply: number };
 export const CLASSIC: Rules = { goal: 'checkmate', randomStart: 'off', pieceDrops: false, markEligiblePieces: false, forcedCapture: false, castling: true, enPassant: true, doubleStep: true, backwardCapture: false, superKnights: false, promotion: 'choice' };
-export const PRESETS: { id: string; name: string; description: string; icon: string; rules: Rules }[] = [
-  { id: 'classic', name: 'Classic', description: 'The original game', icon: '♔', rules: { ...CLASSIC } },
-  { id: 'crazyhouse', name: 'Crazyhouse', description: 'Capture, pocket, drop', icon: '♜', rules: { ...CLASSIC, pieceDrops: true } },
-  { id: 'hill', name: 'King of the Hill', description: 'Race to the center', icon: '⚑', rules: { ...CLASSIC, goal: 'hill' } },
-  { id: 'giveaway', name: 'Giveaway', description: 'Lose pieces to win', icon: '♙', rules: { ...CLASSIC, goal: 'giveaway', markEligiblePieces: true, forcedCapture: true, castling: false } },
-  { id: 'wild', name: 'Wild knights', description: 'Knights gain a step', icon: '♞', rules: { ...CLASSIC, superKnights: true, backwardCapture: true } },
+export const PRESETS: { id: string; name: string; description: string; icon: string; rules: Rules; details: { summary: string; rules: string[] } }[] = [
+  {
+    id: 'classic',
+    name: 'Classic',
+    description: 'The original game',
+    icon: '♔',
+    rules: { ...CLASSIC },
+    details: {
+      summary: 'Standard chess with standard FIDE rules.',
+      rules: [
+        'Protect your king and checkmate the opponent.',
+        'Castling, en passant, and two-square pawn openings are enabled.',
+        'Draws by stalemate, threefold repetition, 50-move rule, or insufficient material.',
+      ],
+    },
+  },
+  {
+    id: 'crazyhouse',
+    name: 'Crazyhouse',
+    description: 'Capture, pocket, drop',
+    icon: '♜',
+    rules: { ...CLASSIC, pieceDrops: true },
+    details: {
+      summary: 'Captures enter your reserve pocket to be dropped back onto the board.',
+      rules: [
+        'Captured enemy pieces join your pocket in your own color.',
+        'Drop reserve pieces onto any empty square on your turn (pawns: ranks 2–7).',
+        'Promoted pieces return to pockets as pawns (~ marks promoted pieces on board).',
+        'Drops obey check rules and can block incoming attacks or deliver checkmate.',
+      ],
+    },
+  },
+  {
+    id: 'hill',
+    name: 'King of the Hill',
+    description: 'Race to the center',
+    icon: '⚑',
+    rules: { ...CLASSIC, goal: 'hill' },
+    details: {
+      summary: 'Race your king to claim the high ground in the center of the board.',
+      rules: [
+        'First king to reach any of the 4 center squares (d4, e4, d5, e5) wins immediately.',
+        'Checkmate also wins normally.',
+        'Kings cannot move into or through check.',
+      ],
+    },
+  },
+  {
+    id: 'giveaway',
+    name: 'Giveaway',
+    description: 'Lose pieces to win',
+    icon: '♙',
+    rules: { ...CLASSIC, goal: 'giveaway', markEligiblePieces: true, forcedCapture: true, castling: false },
+    details: {
+      summary: 'Antichess where sacrificing your entire army is the winning strategy.',
+      rules: [
+        'Captures are mandatory whenever a legal capture exists.',
+        'Kings are ordinary pieces (no check, checkmate, or castling).',
+        'Win by losing all your pieces or having no legal moves left on your turn.',
+      ],
+    },
+  },
+  {
+    id: 'wild',
+    name: 'Wild knights',
+    description: 'Knights gain a step',
+    icon: '♞',
+    rules: { ...CLASSIC, superKnights: true, backwardCapture: true },
+    details: {
+      summary: 'Supercharged knights with extra mobility and backward pawn captures.',
+      rules: [
+        'Knights retain normal L-jumps and also step 1 square in any direction (like a king).',
+        'Pawns can capture 1 square diagonally backward (backward non-capturing steps remain disallowed).',
+        'Checkmate the opposing king to win.',
+      ],
+    },
+  },
 ];
 export const opposite = (c: Color): Color => c === 'w' ? 'b' : 'w';
 export const squareName = (i: number) => 'abcdefgh'[i % 8] + (8 - Math.floor(i / 8));
