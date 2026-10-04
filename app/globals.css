@@ -13,3 +13,17 @@
 .brand .brand-light{color:#bfccae;font-weight:400}
 @media(max-width:730px){.brand{font-size:22px;gap:8px}.brand .brand-icon{width:36px;height:36px}.brand sup{display:none}}
 @media(max-width:400px){.brand{font-size:20px;letter-spacing:-.5px}.local-badge{font-size:10px;letter-spacing:1px}}
+
+/* The turn/result banner is the board's primary heading. */
+.game-status{display:flex;align-items:center;gap:16px;padding:20px;margin-bottom:18px;background:#28351f;border:1px solid #6d874f;border-left:5px solid #cbf27b;border-radius:12px;min-height:110px}
+.status-emblem{display:grid;place-items:center;flex-shrink:0;width:46px;height:46px;color:#d5f89e}
+.status-emblem>span{font-size:46px;line-height:1}.status-emblem>svg{width:30px;height:30px}
+.status-copy{flex:1;min-width:0}.status-copy h1{font-size:clamp(1.6rem,3vw,2rem);font-weight:700;line-height:1.15;letter-spacing:-.6px;color:#e7ffca;overflow-wrap:anywhere}
+.status-copy p{font-size:.875rem;line-height:1.5;color:#bdccae;margin:8px 0 0}
+.opponent-badge{display:flex;flex-direction:column;align-items:center;gap:5px;padding:9px;background:#171e13;border:1px solid #49583b;border-radius:8px;flex-shrink:0;color:#bfda99}
+.opponent-badge svg{width:21px;height:21px}.opponent-badge span{font-size:.75rem;text-transform:capitalize}.opponent-badge.hard{color:#f3bb85}
+.game-status.waiting{background:#232b24;border-color:#4c6050;border-left-color:#9bb5a0}.game-status.waiting h1{color:#dfebe1}
+.game-status.warning{background:#3c2c1e;border-color:#ae7948;border-left-color:#ffc27d}.game-status.warning h1,.game-status.warning .status-emblem{color:#ffd6a7}
+.game-status.finished{background:#344022;border-color:#b5cc72;border-left-color:#e5ff96}.game-status.finished h1{color:#e5ff96}
+.thinking-icon{animation:thinking-spin 2s linear infinite}@keyframes thinking-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.thinking-icon{animation:none}}
+@media(max-width:450px){.game-status{padding:16px 12px;gap:10px;min-height:100px}.status-emblem{width:28px}.status-emblem>span{font-size:34px}.status-copy h1{font-size:1.5rem}.status-copy p{font-size:.8125rem}.opponent-badge{padding:7px}}

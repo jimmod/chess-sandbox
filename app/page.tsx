@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { RotateCcw, RefreshCw, SlidersHorizontal, ChevronDown, ChevronUp, FlaskConical, Cpu, Flag } from 'lucide-react';
+import { RotateCcw, RefreshCw, SlidersHorizontal, ChevronDown, ChevronUp, FlaskConical, Cpu, Flag, Smile, Zap, Flame, Trophy, AlertTriangle, LoaderCircle } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -48,7 +48,6 @@ export default function Home() {
     return null;
   }, [pos, rules, moves, history, resigned, human]);
   const check = royal(rules) && inCheck(pos, pos.turn, rules);
-  const activePreset = PRESETS.find(p => JSON.stringify(p.rules) === JSON.stringify(rules));
   const draftPreset = PRESETS.find(p => JSON.stringify(p.rules) === JSON.stringify(draft));
   const changed = JSON.stringify(draft) !== JSON.stringify(rules) || draftHuman !== human;
   const lastMove = history[history.length - 1].move;
@@ -123,8 +122,17 @@ export default function Home() {
     <header><Link className="brand" href="/" aria-label="Chess Sandbox home"><img className="brand-icon" src="/chess-sandbox-icon.png" alt="" width={44} height={44} /><span className="brand-name">Chess <span className="brand-light">Sandbox</span></span><sup>BETA</sup></Link><span className="header-note">A familiar game. Your rules.</span><span className="local-badge"><Cpu size={14} /> PLAY VS AI</span></header>
     <div className="workspace">
       <section className="play-area" aria-label="Chess game">
-        <div className="section-heading"><div><p className="eyebrow">THE PLAYGROUND</p><h1>Make your next move.</h1></div><span className="pill">{activePreset?.name ?? 'Custom rules'}</span></div>
-        <div className="player"><span className="avatar"><Cpu size={23} /></span><div><strong>Sandbox AI</strong><small>{difficulty[0].toUpperCase() + difficulty.slice(1)} · {human === 'w' ? 'Black' : 'White'}</small></div><span className="player-side">{thinking ? 'THINKING…' : 'YOUR OPPONENT'}</span></div>
+        <div className={`game-status ${end ? 'finished' : check && pos.turn === human ? 'warning' : thinking ? 'waiting' : 'ready'}`}>
+          <div className="status-emblem" aria-hidden="true">{end ? <Trophy /> : thinking ? <LoaderCircle className="thinking-icon" /> : check && pos.turn === human ? <AlertTriangle /> : <span>{human === 'w' ? '♙' : '♟'}</span>}</div>
+          <div className="status-copy" role="status" aria-live="polite" aria-atomic="true">
+            <h1>{status}</h1>
+            <p>You · {human === 'w' ? 'White' : 'Black'} · {end ? end.reason : `Move ${Math.floor(pos.ply / 2) + 1}`}</p>
+          </div>
+          <div className={`opponent-badge ${difficulty}`} title={`Sandbox AI · ${difficulty} · ${human === 'w' ? 'Black' : 'White'}`} aria-label={`Sandbox AI difficulty: ${difficulty}`}>
+            {difficulty === 'easy' ? <Smile aria-hidden="true" /> : difficulty === 'medium' ? <Zap aria-hidden="true" /> : <Flame aria-hidden="true" />}
+            <span>{difficulty}</span>
+          </div>
+        </div>
         <div className="board" role="group" aria-label="Chessboard. Select a piece then a highlighted square. Arrow keys navigate squares.">
           {Array.from({ length: 64 }, (_, display) => {
             const i = flipped ? 63 - display : display, piece = pos.board[i];
@@ -140,7 +148,6 @@ export default function Home() {
             </button>;
           })}
         </div>
-        <div className="player"><span className="avatar human">{human === 'w' ? '♙' : '♟'}</span><div><strong>You</strong><small>{human === 'w' ? 'White' : 'Black'} · {end ? end.reason : history.length === 1 ? (human === 'w' ? 'First move is yours' : 'AI makes the first move') : `${Math.floor(pos.ply / 2) + 1}. ${pos.turn === human ? 'Find your next move' : 'Planning the reply'}`}</small></div><span className={end ? 'game-result' : 'turn-dot'} role="status" aria-live="polite">{status}</span></div>
         {aiError && <div className="error-message" role="alert">{aiError}<button onClick={() => { setAiError(''); setRetry(n => n + 1); }}>Retry AI</button></div>}
         <div className="board-toolbar"><div><button onClick={undo} disabled={history.length <= (human === 'b' ? 2 : 1)}><RotateCcw size={15} /> Undo turn</button><button onClick={() => setFlipped(f => !f)}><RefreshCw size={15} /> Flip board</button></div><button onClick={() => setConfirmResign(true)} disabled={!!end || history.length === 1} aria-label="Resign game"><Flag size={15} /></button></div>
         <div className="move-log"><div className="move-log-title"><h3>Move history</h3><span>{moveList.length} plies</span></div>{!moveList.length ? <p className="empty-history">Every experiment starts with a move.</p> : <div className="move-rows">{Array.from({ length: Math.ceil(moveList.length / 2) }, (_, i) => <div className="move-row" key={i}><span>{i + 1}.</span><b>{moveList[i * 2]?.label}</b><b>{moveList[i * 2 + 1]?.label ?? '…'}</b></div>)}</div>}</div>

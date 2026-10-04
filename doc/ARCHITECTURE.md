@@ -80,7 +80,7 @@ Threefold repetition and the 50-move rule are automatically adjudicated. Insuffi
 
 ## Browser interfaces and accessibility
 
-The board supports click/tap selection, arrow-key focus movement, and Escape to clear selection. Squares expose coordinates and piece names; turn status is announced through a live region. Radix/Shadcn supplies dialogs, switches, selectors, and radios.
+The board supports click/tap selection, arrow-key focus movement, and Escape to clear selection. Squares expose coordinates and piece names. A prominent banner above the board contains the turn/result heading, human color, move number or terminal reason, and a compact AI difficulty badge (smile/easy, bolt/medium, flame/hard). Turn and result changes are announced through an atomic live region. Check, thinking, and finished states have distinct visual treatments; thinking animation respects reduced-motion preferences. Radix/Shadcn supplies dialogs, switches, selectors, and radios.
 
 When supported, the page registers `read_chess_game` through WebMCP. This read-only tool accepts only an empty object and returns the current board, rules, status, and engine-generated legal moves. Unsupported browsers proceed normally. Registration is cleaned up with an abort signal.
 
