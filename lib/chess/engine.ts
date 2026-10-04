@@ -7,6 +7,7 @@ export type Rules = {
   randomStart: RandomStart;
   duckChess: boolean;
   pieceDrops: boolean;
+  atomic: boolean;
   markEligiblePieces: boolean;
   forcedCapture: boolean;
   castling: boolean;
@@ -21,8 +22,8 @@ export const POCKET_KINDS: PocketKind[] = ['p', 'n', 'b', 'r', 'q'];
 export type Pockets = Record<Color, Record<PocketKind, number>>;
 export const emptyPockets = (): Pockets => ({ w: { p: 0, n: 0, b: 0, r: 0, q: 0 }, b: { p: 0, n: 0, b: 0, r: 0, q: 0 } });
 export type Move = { drop?: PocketKind; duck?: number; from: number; to: number; promotion?: Kind; ep?: number; rook?: [number, number] };
-export type Position = { pockets?: Pockets; duck?: number | null; board: (Piece | null)[]; turn: Color; rights: string; ep: number | null; halfmove: number; ply: number };
-export const CLASSIC: Rules = { goal: 'checkmate', randomStart: 'off', duckChess: false, pieceDrops: false, markEligiblePieces: false, forcedCapture: false, castling: true, enPassant: true, doubleStep: true, backwardCapture: false, superKnights: false, promotion: 'choice' };
+export type Position = { pockets?: Pockets; duck?: number | null; board: (Piece | null)[]; turn: Color; rights: string; ep: number | null; halfmove: number; ply: number; lastExplosion?: number[] | null };
+export const CLASSIC: Rules = { goal: 'checkmate', randomStart: 'off', duckChess: false, pieceDrops: false, atomic: false, markEligiblePieces: false, forcedCapture: false, castling: true, enPassant: true, doubleStep: true, backwardCapture: false, superKnights: false, promotion: 'choice' };
 export const PRESETS: { id: string; name: string; description: string; icon: string; rules: Rules; details: { summary: string; rules: string[] } }[] = [
   {
     id: 'classic',
@@ -36,6 +37,22 @@ export const PRESETS: { id: string; name: string; description: string; icon: str
         'Protect your king and checkmate the opponent.',
         'Castling, en passant, and two-square pawn openings are enabled.',
         'Draws by stalemate, threefold repetition, 50-move rule, or insufficient material.',
+      ],
+    },
+  },
+  {
+    id: 'duck',
+    name: 'Duck Chess',
+    description: 'Quack, block, strike',
+    icon: '🦆',
+    rules: { ...CLASSIC, duckChess: true, goal: 'capture' },
+    details: {
+      summary: 'Move your piece, then move the neutral Duck to block any square.',
+      rules: [
+        'After moving a piece, you must place the Duck on any unoccupied square.',
+        'The Duck is completely neutral, cannot be captured, and blocks pieces from moving onto or through it.',
+        'No check or checkmate: win by capturing the opponent\'s King.',
+        'Knights can jump over the Duck.',
       ],
     },
   },
@@ -56,18 +73,20 @@ export const PRESETS: { id: string; name: string; description: string; icon: str
     },
   },
   {
-    id: 'duck',
-    name: 'Duck Chess',
-    description: 'Quack, block, strike',
-    icon: '🦆',
-    rules: { ...CLASSIC, duckChess: true, goal: 'capture' },
+    id: 'atomic',
+    name: 'Atomic Chess',
+    description: 'Every capture detonates an explosion',
+    icon: '💥',
+    rules: { ...CLASSIC, atomic: true },
     details: {
-      summary: 'Move your piece, then move the neutral Duck to block any square.',
+      summary: 'Captures trigger an explosive blast that wipes out the capturer, the victim, and surrounding non-pawn pieces.',
       rules: [
-        'After moving a piece, you must place the Duck on any unoccupied square.',
-        'The Duck is completely neutral, cannot be captured, and blocks pieces from moving onto or through it.',
-        'No check or checkmate: win by capturing the opponent\'s King.',
-        'Knights can jump over the Duck.',
+        'Every capture causes an explosion on the target square.',
+        'The capturing piece, captured piece, and all adjacent pieces (friend or foe) are destroyed.',
+        'Pawns are immune to the blast radius (they only die if directly capturing or captured).',
+        'Kings cannot capture any piece, as the explosion would destroy them.',
+        'Connected kings: when kings touch on adjacent squares, neither king can be placed in check.',
+        'Blow up the opponent\'s king to win immediately! Moves that blow up your own king are illegal.',
       ],
     },
   },
@@ -187,7 +206,7 @@ export function attacked(pos: Position, target: number, by: Color, rules: Rules)
     const dr = tr - Math.floor(from / 8), dc = tc - from % 8;
     if (p.kind === 'p' && Math.abs(dc) === 1 && (dr === (by === 'w' ? -1 : 1) || rules.backwardCapture && Math.abs(dr) === 1)) return true;
     if (p.kind === 'n' && (Math.abs(dr) * Math.abs(dc) === 2 || rules.superKnights && Math.max(Math.abs(dr), Math.abs(dc)) === 1)) return true;
-    if (p.kind === 'k' && Math.max(Math.abs(dr), Math.abs(dc)) === 1) return true;
+    if (p.kind === 'k' && !rules.atomic && Math.max(Math.abs(dr), Math.abs(dc)) === 1) return true;
     if (p.kind === 'q' || p.kind === 'r' || p.kind === 'b') {
       const line = (p.kind !== 'b' && (dr === 0 || dc === 0)) || (p.kind !== 'r' && Math.abs(dr) === Math.abs(dc));
       if (!line || (!dr && !dc)) continue;
@@ -203,17 +222,27 @@ export function attacked(pos: Position, target: number, by: Color, rules: Rules)
 }
 export function inCheck(pos: Position, color: Color, rules: Rules): boolean {
   const king = pos.board.findIndex(p => p?.color === color && p.kind === 'k');
-  return king < 0 || attacked(pos, king, opposite(color), rules);
+  if (king < 0) return true;
+  if (rules.atomic) {
+    const oppKing = pos.board.findIndex(p => p?.color === opposite(color) && p.kind === 'k');
+    if (oppKing >= 0) {
+      const kr = Math.floor(king / 8), kc = king % 8;
+      const okr = Math.floor(oppKing / 8), okc = oppKing % 8;
+      if (Math.max(Math.abs(kr - okr), Math.abs(kc - okc)) <= 1) return false;
+    }
+  }
+  return attacked(pos, king, opposite(color), rules);
 }
-export function applyMove(pos: Position, m: Move): Position {
+export function applyMove(pos: Position, m: Move, rules?: Rules): Position {
   const board = pos.board.slice();
   const pockets = pos.pockets ? { w: { ...pos.pockets.w }, b: { ...pos.pockets.b } } : undefined;
   const duck = m.duck !== undefined ? m.duck : (pos.duck ?? null);
+  let lastExplosion: number[] | null = null;
   if (m.drop) {
     if (!pockets || pockets[pos.turn][m.drop] < 1 || m.to < 0 || m.to > 63 || board[m.to] || (m.drop === 'p' && (m.to < 8 || m.to >= 56))) throw new Error('Invalid drop');
     pockets[pos.turn][m.drop]--;
     board[m.to] = { color: pos.turn, kind: m.drop };
-    return { ...pos, duck, board, pockets, turn: opposite(pos.turn), ep: null, halfmove: 0, ply: pos.ply + 1 };
+    return { ...pos, duck, board, pockets, turn: opposite(pos.turn), ep: null, halfmove: 0, ply: pos.ply + 1, lastExplosion: null };
   }
   const p = board[m.from]!;
   const captured = board[m.to] || (m.ep !== undefined ? board[m.ep] : null);
@@ -224,7 +253,33 @@ export function applyMove(pos: Position, m: Move): Position {
   let rights = pos.rights;
   if (p.kind === 'k') rights = rights.replace(p.color === 'w' ? /[KQ]/g : /[kq]/g, '');
   for (const [sq, right] of [[0, 'q'], [7, 'k'], [56, 'Q'], [63, 'K']] as const) if (m.from === sq || m.to === sq) rights = rights.replace(right, '');
-  return { duck, board, pockets, turn: opposite(pos.turn), rights, ep: p.kind === 'p' && Math.abs(m.to - m.from) === 16 ? (m.to + m.from) / 2 : null, halfmove: p.kind === 'p' || captured ? 0 : pos.halfmove + 1, ply: pos.ply + 1 };
+
+  if (rules?.atomic && captured) {
+    board[m.to] = null;
+    const exploded = [m.to];
+    if (m.ep !== undefined && m.ep !== m.to) exploded.push(m.ep);
+    const tr = Math.floor(m.to / 8), tc = m.to % 8;
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        if (dr === 0 && dc === 0) continue;
+        const nr = tr + dr, nc = tc + dc;
+        if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+          const adjSq = nr * 8 + nc;
+          const adjPiece = board[adjSq];
+          if (adjPiece && adjPiece.kind !== 'p') {
+            board[adjSq] = null;
+            exploded.push(adjSq);
+            for (const [homeSq, right] of [[0, 'q'], [7, 'k'], [56, 'Q'], [63, 'K'], [4, 'kq'], [60, 'KQ']] as const) {
+              if (adjSq === homeSq) rights = rights.replace(new RegExp('[' + right + ']', 'g'), '');
+            }
+          }
+        }
+      }
+    }
+    lastExplosion = exploded;
+  }
+
+  return { duck, board, pockets, turn: opposite(pos.turn), rights, ep: p.kind === 'p' && Math.abs(m.to - m.from) === 16 ? (m.to + m.from) / 2 : null, halfmove: p.kind === 'p' || captured ? 0 : pos.halfmove + 1, ply: pos.ply + 1, lastExplosion };
 }
 function pseudoMoves(pos: Position, rules: Rules): Move[] {
   const moves: Move[] = [];
@@ -249,7 +304,7 @@ function pseudoMoves(pos: Position, rules: Rules): Move[] {
         if (!inside(r + dr, c + dc)) continue;
         const to = (r + dr) * 8 + c + dc, target = pos.board[to];
         if (to === duckSq) continue;
-        if (target && target.color !== p.color && (!royal(rules) || target.kind !== 'k')) add(from, to);
+        if (target && target.color !== p.color && (!royal(rules) || rules.atomic || target.kind !== 'k')) add(from, to);
         if (dr === dir && rules.enPassant && pos.ep === to && !target) {
           const ep = to - dir * 8, victim = pos.board[ep];
           if (victim?.kind === 'p' && victim.color !== p.color) add(from, to, { ep });
@@ -268,7 +323,8 @@ function pseudoMoves(pos: Position, rules: Rules): Move[] {
       }
       const target = pos.board[to];
       if (target?.color === p.color) break;
-      if (!target || !royal(rules) || target.kind !== 'k') add(from, to);
+      if (rules.atomic && p.kind === 'k' && target) break;
+      if (!target || !royal(rules) || rules.atomic || target.kind !== 'k') add(from, to);
       if (target) break;
     }
     if (p.kind === 'k' && rules.castling && rules.goal !== 'giveaway') {
@@ -281,7 +337,7 @@ function pseudoMoves(pos: Position, rules: Rules): Move[] {
         if (!pos.rights.includes(right) || rook?.kind !== 'r' || rook.color !== p.color) continue;
         const crossed = Array.from({ length: kingSide ? 2 : 3 }, (_, i) => home + (i + 1) * direction);
         if (crossed.some(s => pos.board[s] || s === duckSq) || rookFrom === duckSq) continue;
-        if (royal(rules) && inCheck(applyMove(pos, { from, to: home + direction }), p.color, rules)) continue;
+        if (royal(rules) && inCheck(applyMove(pos, { from, to: home + direction }, rules), p.color, rules)) continue;
         add(from, home + 2 * direction, { rook: [rookFrom, home + direction] });
       }
     }
@@ -296,7 +352,21 @@ function pseudoMoves(pos: Position, rules: Rules): Move[] {
 }
 export function legalMoves(pos: Position, rules: Rules): Move[] {
   let moves = pseudoMoves(pos, rules);
-  if (royal(rules)) moves = moves.filter(m => !inCheck(applyMove(pos, m), pos.turn, rules));
+  if (rules.atomic) {
+    moves = moves.filter(m => {
+      const next = applyMove(pos, m, rules);
+      const myKing = next.board.findIndex(p => p?.color === pos.turn && p.kind === 'k');
+      if (myKing < 0) return false;
+      const oppKing = next.board.findIndex(p => p?.color === opposite(pos.turn) && p.kind === 'k');
+      if (oppKing < 0) return true;
+      if (royal(rules)) {
+        return !inCheck(next, pos.turn, rules);
+      }
+      return true;
+    });
+  } else if (royal(rules)) {
+    moves = moves.filter(m => !inCheck(applyMove(pos, m, rules), pos.turn, rules));
+  }
   if (rules.forcedCapture || rules.goal === 'giveaway') {
     const captures = moves.filter(m => pos.board[m.to] || m.ep !== undefined);
     if (captures.length) return captures;
@@ -305,6 +375,13 @@ export function legalMoves(pos: Position, rules: Rules): Move[] {
 }
 export type Outcome = { winner: Color | null; reason: string };
 export function outcome(pos: Position, rules: Rules, moves?: Move[]): Outcome | null {
+  if (rules.atomic) {
+    const whiteKing = pos.board.some(p => p?.color === 'w' && p.kind === 'k');
+    const blackKing = pos.board.some(p => p?.color === 'b' && p.kind === 'k');
+    if (!whiteKing && !blackKing) return { winner: opposite(pos.turn), reason: 'Both kings destroyed' };
+    if (!whiteKing) return { winner: 'b', reason: 'King exploded' };
+    if (!blackKing) return { winner: 'w', reason: 'King exploded' };
+  }
   if (rules.goal === 'annihilation') {
     for (const color of ['w', 'b'] as Color[]) {
       const hasPieces = pos.board.some(p => p?.color === color) || (rules.pieceDrops && POCKET_KINDS.some(k => (pos.pockets?.[color][k] ?? 0) > 0));
@@ -336,7 +413,7 @@ export function positionKey(pos: Position, rules: Rules): string {
 export function notation(pos: Position, move: Move, rules: Rules): string {
   let base: string;
   if (move.drop) {
-    const next = applyMove(pos, move);
+    const next = applyMove(pos, move, rules);
     const suffix = royal(rules) && inCheck(next, next.turn, rules) ? (outcome(next, rules)?.reason === 'Checkmate' ? '#' : '+') : '';
     base = move.drop.toUpperCase() + '@' + squareName(move.to) + suffix;
   } else if (move.rook) {
@@ -348,8 +425,10 @@ export function notation(pos: Position, move: Move, rules: Rules): string {
       const same = legalMoves(pos, rules).filter(m => m.to === move.to && m.from !== move.from && pos.board[m.from]?.kind === p.kind);
       if (same.length) prefix += same.every(m => m.from % 8 !== move.from % 8) ? squareName(move.from)[0] : same.every(m => Math.floor(m.from / 8) !== Math.floor(move.from / 8)) ? squareName(move.from)[1] : squareName(move.from);
     }
-    const next = applyMove(pos, move), end = outcome(next, rules);
-    base = prefix + (capture ? 'x' : '') + squareName(move.to) + (move.promotion ? '=' + move.promotion.toUpperCase() : '') + (royal(rules) && inCheck(next, next.turn, rules) ? end?.reason === 'Checkmate' ? '#' : '+' : '');
+    const next = applyMove(pos, move, rules), end = outcome(next, rules);
+    const mateOrExplosion = end?.reason === 'Checkmate' || end?.reason === 'King exploded';
+    const checkOrMate = (royal(rules) || rules.atomic) && inCheck(next, next.turn, rules) ? (mateOrExplosion ? '#' : '+') : (mateOrExplosion ? '#' : '');
+    base = prefix + (capture ? 'x' : '') + squareName(move.to) + (move.promotion ? '=' + move.promotion.toUpperCase() : '') + checkOrMate;
   }
   if (rules.duckChess && move.duck !== undefined && move.duck !== null && !pos.board[move.to]?.kind) {
     // If king was captured, game ends without duck; otherwise show duck destination

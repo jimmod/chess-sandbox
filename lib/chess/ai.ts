@@ -17,13 +17,19 @@ function evaluate(pos: Position, rules: Rules): number {
       if (p.kind === 'n' || p.kind === 'b') value += center * 10;
       if (p.kind === 'n' && rules.superKnights) value += 100;
     } else {
-      if (p.kind === 'p') value += (p.color === 'w' ? 6 - row : row - 1) * 9 + center * 3;
+      if (p.kind === 'p') value += (p.color === 'w' ? 6 - row : row - 1) * 9 + center * 3 + (rules.atomic ? 40 : 0);
       if (p.kind === 'n' || p.kind === 'b') value += center * 10;
       if (p.kind === 'n' && rules.superKnights) value += 100;
       if (p.kind === 'k' && rules.goal === 'hill') value += center * 40;
     }
     score += p.color === pos.turn ? value : -value;
   });
+  if (rules.atomic) {
+    const myKing = pos.board.some(p => p?.color === pos.turn && p.kind === 'k');
+    const oppKing = pos.board.some(p => p?.color === opposite(pos.turn) && p.kind === 'k');
+    if (!myKing) return -90000;
+    if (!oppKing) return 90000;
+  }
   if (rules.pieceDrops && pos.pockets) for (const color of ['w', 'b'] as const) for (const kind of POCKET_KINDS) {
     score += (color === pos.turn ? 1 : -1) * pos.pockets[color][kind] * (rules.goal === 'giveaway' ? -100 - values[kind] / 10 : values[kind] * 1.1);
   }
@@ -42,6 +48,10 @@ export function chooseMove(pos: Position, rules: Rules, difficulty: Difficulty, 
     const kingWin = rawMoves.find(m => pos.board[m.to]?.kind === 'k');
     if (kingWin) return kingWin;
   }
+  if (rules.atomic) {
+    const atomicWin = rawMoves.find(m => !applyMove(pos, m, rules).board.some(p => p?.color === opposite(pos.turn) && p.kind === 'k'));
+    if (atomicWin) return atomicWin;
+  }
 
   function getDuckMoves(p: Position, isRoot: boolean): Move[] {
     const ms = legalMoves(p, rules);
@@ -50,7 +60,7 @@ export function chooseMove(pos: Position, rules: Rules, difficulty: Difficulty, 
     if (kingCapture) return [kingCapture];
     const res: Move[] = [];
     for (const m of ms) {
-      const nextPos = applyMove(p, m);
+      const nextPos = applyMove(p, m, rules);
       const candidates = candidateDuckSquares(nextPos, p.duck);
       const count = candidates.length ? (isRoot ? Math.min(candidates.length, 2) : 1) : 0;
       if (count === 0) res.push(m);
@@ -63,7 +73,7 @@ export function chooseMove(pos: Position, rules: Rules, difficulty: Difficulty, 
   if (difficulty === 'easy' && random() < .35) {
     const m = moves[Math.floor(random() * moves.length)];
     if (rules.duckChess && m.duck === undefined) {
-      const after = applyMove(pos, m);
+      const after = applyMove(pos, m, rules);
       const sqs = legalDuckSquares(pos, after.board);
       return sqs.length ? { ...m, duck: sqs[Math.floor(random() * sqs.length)] } : m;
     }
@@ -76,6 +86,10 @@ export function chooseMove(pos: Position, rules: Rules, difficulty: Difficulty, 
     return ms.slice().sort((a, b) => priority(p, b) - priority(p, a));
   }
   function priority(p: Position, m: Move) {
+    if (rules.atomic) {
+      const next = applyMove(p, m, rules);
+      if (!next.board.some(pc => pc?.color === opposite(p.turn) && pc.kind === 'k')) return 100000;
+    }
     if (rules.goal !== 'annihilation' && p.board[m.to]?.kind === 'k') return 100000;
     if (m.drop) return 40 + (7 - Math.abs(3.5 - Math.floor(m.to / 8)) - Math.abs(3.5 - m.to % 8)) * 5;
     const target = p.board[m.to] || (m.ep !== undefined ? p.board[m.ep] : null);
@@ -91,7 +105,7 @@ export function chooseMove(pos: Position, rules: Rules, difficulty: Difficulty, 
     if (depth === 0) return evaluate(p, rules);
     let bestScore = -Infinity;
     for (const m of ordered(p, ms)) {
-      const score = -search(applyMove(p, m), depth - 1, -beta, -alpha, ply + 1);
+      const score = -search(applyMove(p, m, rules), depth - 1, -beta, -alpha, ply + 1);
       bestScore = Math.max(bestScore, score); alpha = Math.max(alpha, score); if (alpha >= beta) break;
     }
     return bestScore;
@@ -102,7 +116,7 @@ export function chooseMove(pos: Position, rules: Rules, difficulty: Difficulty, 
     try {
       const sorted = ordered(pos, moves); sorted.sort((a, b) => Number(b === best) - Number(a === best));
       for (const m of sorted) {
-        const value = -search(applyMove(pos, m), depth - 1, -Infinity, -score, 1) + (difficulty === 'easy' ? random() * 90 : 0);
+        const value = -search(applyMove(pos, m, rules), depth - 1, -Infinity, -score, 1) + (difficulty === 'easy' ? random() * 90 : 0);
         if (value > score) { score = value; iterationBest = m; }
       }
       best = iterationBest;
@@ -110,7 +124,7 @@ export function chooseMove(pos: Position, rules: Rules, difficulty: Difficulty, 
     if (Date.now() >= deadline) break;
   }
   if (rules.duckChess && best.duck === undefined) {
-    const after = applyMove(pos, best);
+    const after = applyMove(pos, best, rules);
     const sqs = legalDuckSquares(pos, after.board);
     if (sqs.length) best = { ...best, duck: candidateDuckSquares(after, pos.duck)[0] ?? sqs[0] };
   }

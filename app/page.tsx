@@ -50,8 +50,8 @@ export default function Home() {
   const pos = history[history.length - 1].position;
   const displayPos = useMemo(() => {
     if (!pendingDuckMove) return pos;
-    return applyMove(pos, pendingDuckMove);
-  }, [pos, pendingDuckMove]);
+    return applyMove(pos, pendingDuckMove, rules);
+  }, [pos, pendingDuckMove, rules]);
   const validDuckSquares = useMemo(() => {
     if (!pendingDuckMove) return [];
     return legalDuckSquares(pos, displayPos.board);
@@ -75,7 +75,7 @@ export default function Home() {
   const status = pendingDuckMove ? 'Place the duck' : localGame ? (end ? (end.winner === null ? 'Game drawn' : `${end.winner === 'w' ? 'White' : 'Black'} wins!`) : `${pos.turn === 'w' ? 'White' : 'Black'}${check ? ' is in check' : ' to move'}`) : end ? (end.winner === null ? 'Game drawn' : end.winner === human ? 'You win!' : 'Sandbox AI wins') : pos.turn !== human ? (aiError ? 'AI paused' : 'Sandbox AI is thinking…') : check ? 'You’re in check' : 'Your turn';
 
   function commitMove(m: Move) {
-    const next = applyMove(pos, m);
+    const next = applyMove(pos, m, rules);
     setHistory(h => [...h, { position: next, move: m, label: notation(pos, m, rules) }]);
     setSelected(null); setSelectedPocket(null); setPendingDuckMove(null); setPromotion([]); setAiError('');
   }
@@ -157,6 +157,7 @@ export default function Home() {
   const toggles: [keyof Rules, string, string][] = [
     ['duckChess', 'Duck chess', 'Move the neutral duck to block any square after each turn.'],
     ['pieceDrops', 'Piece drops / pockets', 'Captured pieces become reserves you can drop.'],
+    ['atomic', 'Atomic explosions', 'Captures trigger an explosive blast destroying adjacent non-pawns.'],
     ['markEligiblePieces', 'Mark eligible pieces', 'Mark your pieces that have a legal move.'],
     ['forcedCapture', 'Forced captures', 'If a capture is available, take it.'],
     ['castling', 'Castling', 'Let king and rook move together.'],
@@ -217,6 +218,7 @@ export default function Home() {
               if (e.key in offsets) { e.preventDefault(); const target = display + offsets[e.key]; if (target >= 0 && target < 64) document.getElementById(`sq-${flipped ? 63 - target : target}`)?.focus(); }
             }} className={`square ${(Math.floor(i / 8) + i % 8) % 2 ? 'dark-square' : 'light-square'} ${selected === i || pendingDuckMove?.to === i ? 'selected' : ''} ${eligible ? 'eligible-piece' : ''} ${lastMove && (lastMove.from === i || lastMove.to === i) ? 'last-move' : ''} ${isCheck ? 'in-check' : ''} ${rules.goal === 'hill' && [27, 28, 35, 36].includes(i) ? 'hill-square' : ''}`}>
               {hasDuck && <span className="duck-piece" role="img" aria-label="Duck blocker"><DuckIcon size="100%" className="duck-piece-svg" filled /></span>}
+              {displayPos.lastExplosion?.includes(i) && <><span className="blast-effect" role="img" aria-label="Explosion blast">💥</span><span className="blast-ring" aria-hidden="true" /></>}
               {piece && <PieceGlyph piece={piece} />}{piece?.promoted && rules.pieceDrops && <small className="promoted-mark" aria-hidden="true">~</small>}{eligible && <span className="eligible-marker" aria-hidden="true" />}{possible && <span className={piece ? 'capture-target' : 'move-target'} />}{isDuckTarget && <span className="duck-target" aria-hidden="true" />}
               {display % 8 === 0 && <small className="rank">{8 - Math.floor(i / 8)}</small>}{display >= 56 && <small className="file">{'abcdefgh'[i % 8]}</small>}
             </button>;
@@ -239,7 +241,7 @@ export default function Home() {
         <h3>Meet your opponent</h3><RadioGroup aria-label="Opponent" className="difficulty-group" value={localGame ? 'human' : difficulty} onValueChange={v => { workerRef.current?.terminate(); setLocalGame(v === 'human'); if (v !== 'human') setDifficulty(v as Difficulty); setSelected(null); setSelectedPocket(null); setPromotion([]); setAiError(''); }}>{(['easy', 'medium', 'hard', 'human'] as const).map((v, i) => <label key={v} className={`difficulty-choice ${(localGame ? 'human' : difficulty) === v ? 'active' : ''}`}><RadioGroupItem className="sr-only" value={v} /><span className="level-bars" aria-hidden="true">{v === 'human' ? <Users size={13} /> : [0,1,2].map(n => <i key={n} className={n <= i ? 'lit' : ''} />)}</span>{v[0].toUpperCase() + v.slice(1)}</label>)}</RadioGroup><p className="level-description">{localGame ? 'Two players, one board. Take turns on this device.' : levelCopy[difficulty]}</p>
         {!localGame && <div className="side-choice"><label className="field-label">Play as</label><Choice label="Play as" value={draftHuman} onChange={v => setDraftHuman(v as SideChoice)} options={ [['w', 'White'], ['b', 'Black'], ['random', 'Random']] } /></div>}
         <button className="primary" onClick={requestNew}><span>♟</span>{changed ? 'Apply rules & start game' : 'New game'}</button><p className="setup-note">{changed ? 'Your changes take effect in a new game.' : 'New board. Fresh possibilities.'}</p>
-        <div className="active-rules"><span>ON THIS BOARD</span><p>{goals[rules.goal]}{rules.duckChess ? ' · Duck chess' : ''}{rules.pieceDrops ? ' · Piece drops' : ''}{rules.randomStart !== 'off' ? ` · Random start (${rules.randomStart === 'all' ? 'all pieces' : 'except pawns'}) · No castling` : ''}{rules.forcedCapture && rules.goal !== 'giveaway' ? ' · Forced captures' : ''}{rules.superKnights ? ' · Super knights' : ''}{rules.backwardCapture ? ' · Backward captures' : ''}</p></div>
+        <div className="active-rules"><span>ON THIS BOARD</span><p>{goals[rules.goal]}{rules.duckChess ? ' · Duck chess' : ''}{rules.pieceDrops ? ' · Piece drops' : ''}{rules.atomic ? ' · Atomic chess' : ''}{rules.randomStart !== 'off' ? ` · Random start (${rules.randomStart === 'all' ? 'all pieces' : 'except pawns'}) · No castling` : ''}{rules.forcedCapture && rules.goal !== 'giveaway' ? ' · Forced captures' : ''}{rules.superKnights ? ' · Super knights' : ''}{rules.backwardCapture ? ' · Backward captures' : ''}</p></div>
       </aside>
     </div>
     <footer><span>CHESS SANDBOX / EXPERIMENT. PLAY. REPEAT.</span><span>{localGame ? 'Your rules. Shared board.' : 'Your rules. Same rules for the AI.'}</span></footer>

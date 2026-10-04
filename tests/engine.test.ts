@@ -339,5 +339,84 @@ test('total annihilation rules: king can move into kill zones (attacked squares)
   assert.ok(moves.some(m => m.to === 52)); // e2 (in the kill zone)
   assert.ok(moves.some(m => m.to === 53)); // capturing enemy king directly
 });
+test('atomic chess: captures detonate explosions destroying capturer, victim, and adjacent non-pawns while pawns survive', () => {
+  const atomicRules = PRESETS.find(p => p.id === 'atomic')!.rules;
+  assert.equal(atomicRules.atomic, true);
+
+  const p = bare();
+  p.turn = 'w';
+  p.board[60] = { color: 'w', kind: 'k' }; // e1 king (safe far away)
+  p.board[0] = { color: 'b', kind: 'k' };  // a8 king (safe far away)
+  p.board[36] = { color: 'w', kind: 'r' }; // e4 rook
+  p.board[28] = { color: 'b', kind: 'q' }; // e5 queen
+  // Surrounding squares around e5 (28):
+  p.board[27] = { color: 'b', kind: 'b' }; // d5 bishop (adjacent non-pawn -> should explode)
+  p.board[29] = { color: 'w', kind: 'n' }; // f5 knight (adjacent friendly non-pawn -> should explode)
+  p.board[20] = { color: 'b', kind: 'p' }; // e6 pawn (adjacent pawn -> should SURVIVE)
+
+  // White rook captures black queen on 28
+  const captureMove = legalMoves(p, atomicRules).find(m => m.from === 36 && m.to === 28);
+  assert.ok(captureMove);
+
+  const afterExplosion = applyMove(p, captureMove, atomicRules);
+  assert.equal(afterExplosion.board[36], null); // Capturing rook destroyed
+  assert.equal(afterExplosion.board[28], null); // Captured queen destroyed
+  assert.equal(afterExplosion.board[27], null); // Adjacent black bishop destroyed
+  assert.equal(afterExplosion.board[29], null); // Adjacent white knight destroyed
+  assert.equal(afterExplosion.board[20]?.kind, 'p'); // Adjacent pawn SURVIVED
+  assert.ok(afterExplosion.lastExplosion?.includes(28));
+  assert.ok(afterExplosion.lastExplosion?.includes(27));
+  assert.ok(afterExplosion.lastExplosion?.includes(29));
+});
+test('atomic chess: king cannot capture pieces and cannot make moves that blow up own king', () => {
+  const atomicRules = PRESETS.find(p => p.id === 'atomic')!.rules;
+  const p = bare();
+  p.turn = 'w';
+  p.board[60] = { color: 'w', kind: 'k' }; // e1 king
+  p.board[0] = { color: 'b', kind: 'k' };  // a8 king
+  p.board[52] = { color: 'b', kind: 'p' }; // e2 pawn right next to white king
+
+  const kingMoves = legalMoves(p, atomicRules).filter(m => m.from === 60);
+  // King cannot capture e2 pawn because captures destroy the capturer!
+  assert.ok(!kingMoves.some(m => m.to === 52));
+
+  // If a white piece captures something that would blow up white's own king, it is illegal
+  p.board[61] = { color: 'w', kind: 'r' }; // f1 rook
+  p.board[53] = { color: 'b', kind: 'n' }; // f2 knight (adjacent to e1 king!)
+  // If f1 rook captures f2 knight, explosion at f2 would destroy e1 king!
+  const rookCapture = legalMoves(p, atomicRules).find(m => m.from === 61 && m.to === 53);
+  assert.equal(rookCapture, undefined); // Illegal because own king would blow up!
+});
+test('atomic chess: connected kings are immune to check', () => {
+  const atomicRules = PRESETS.find(p => p.id === 'atomic')!.rules;
+  const p = bare();
+  p.turn = 'w';
+  p.board[36] = { color: 'w', kind: 'k' }; // e4 king
+  p.board[37] = { color: 'b', kind: 'k' }; // f4 king (adjacent / touching!)
+  p.board[32] = { color: 'b', kind: 'r' }; // a4 rook targeting e4 king along rank 4
+
+  // Because the kings are touching, neither king can be in check!
+  assert.equal(inCheck(p, 'w', atomicRules), false);
+  assert.equal(inCheck(p, 'b', atomicRules), false);
+});
+test('atomic chess: detonating enemy king wins immediately and AI executes it', () => {
+  const atomicRules = PRESETS.find(p => p.id === 'atomic')!.rules;
+  const p = bare();
+  p.turn = 'w';
+  p.board[60] = { color: 'w', kind: 'k' }; // e1 king
+  p.board[52] = { color: 'w', kind: 'q' }; // e2 queen
+  p.board[4] = { color: 'b', kind: 'k' };  // e8 king
+  p.board[12] = { color: 'b', kind: 'n' }; // e7 knight (adjacent to e8 king!)
+
+  // White queen captures e7 knight -> explosion at e7 destroys e8 king!
+  const aiMove = chooseMove(p, atomicRules, 'medium');
+  assert.ok(aiMove);
+  assert.equal(aiMove.from, 52);
+  assert.equal(aiMove.to, 12);
+
+  const afterMove = applyMove(p, aiMove, atomicRules);
+  assert.deepEqual(outcome(afterMove, atomicRules), { winner: 'w', reason: 'King exploded' });
+});
+
 
 
