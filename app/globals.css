@@ -55,3 +55,11 @@
 .matchup-player.active-player{border-color:var(--primary)}.matchup-player svg{width:21px;height:21px}
 .matchup-side{font-size:.625rem;text-transform:uppercase;letter-spacing:.5px;color:var(--muted-foreground)}.matchup-label{font-size:.75rem}
 @media(max-width:450px){.game-status>.status-emblem{display:none}.game-status{gap:8px}.player-matchup,.matchup-entry{gap:4px}.matchup-player{min-width:43px;padding:7px 4px}.status-copy h1{font-size:1.375rem}}
+
+.pockets{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;padding:14px;background:var(--card);border:1px solid var(--border);border-radius:10px}
+.pocket-title{display:block;font-size:.875rem;color:var(--foreground);margin-bottom:8px}.pocket-pieces{display:flex;gap:4px}
+.pocket-pieces button{position:relative;flex:1;min-width:0;border:1px solid var(--border);border-radius:6px;background:var(--muted);padding:6px 2px;font-size:28px;line-height:1.2}
+.pocket-pieces button[aria-pressed=true]{border-color:var(--primary);outline:2px solid var(--primary)}.pocket-pieces button:disabled{opacity:.45}
+.pocket-pieces small{display:block;font:12px Arial,sans-serif;color:var(--foreground)}.pocket-help{grid-column:1/-1;font-size:.8125rem;line-height:1.5;color:var(--muted-foreground);margin:0}
+.promoted-mark{position:absolute;right:5px;bottom:10px;font-size:18px;font-weight:bold;z-index:3}
+@media(max-width:450px){.pockets{gap:8px;padding:10px}.pocket-pieces{gap:2px}.pocket-pieces button{font-size:23px}}

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { initialPosition, legalMoves, applyMove, CLASSIC, outcome, inCheck, squareIndex, PRESETS } from '../lib/chess/engine.ts';
+import { initialPosition, legalMoves, applyMove, CLASSIC, outcome, inCheck, squareIndex, PRESETS, emptyPockets, notation } from '../lib/chess/engine.ts';
 import type { Position, Rules } from '../lib/chess/engine.ts';
 import { chooseMove } from '../lib/chess/ai.ts';
 function play(p: Position, from: string, to: string, r: Rules = CLASSIC) { const m = legalMoves(p, r).find(m => m.from === squareIndex(from) && m.to === squareIndex(to)); assert.ok(m, `${from}-${to}`); return applyMove(p, m); }
@@ -11,7 +11,7 @@ test('Fools mate ends the game', () => { let p = initialPosition(); for (const [
 test('en passant capture removes the passed pawn and expires', () => { let p = initialPosition(); for (const [a,b] of [['e2','e4'],['a7','a6'],['e4','e5'],['d7','d5']]) p=play(p,a,b); assert.ok(legalMoves(p,CLASSIC).some(m=>m.ep!==undefined)); const captured=play(p,'e5','d6'); assert.equal(captured.board[squareIndex('d5')], null); assert.equal(legalMoves(p,{...CLASSIC,enPassant:false}).some(m=>m.ep!==undefined), false); });
 test('castling moves both pieces and cannot cross attack', () => { const p = bare(); p.rights='K'; p.board[60]={color:'w',kind:'k'}; p.board[63]={color:'w',kind:'r'}; p.board[4]={color:'b',kind:'k'}; const n=play(p,'e1','g1'); assert.equal(n.board[61]?.kind,'r'); p.board[5]={color:'b',kind:'r'}; assert.equal(legalMoves(p,CLASSIC).some(m=>m.rook),false); });
 test('promotion offers four choices or the custom forced piece', () => { const p=bare(); p.board[60]={color:'w',kind:'k'};p.board[4]={color:'b',kind:'k'};p.board[8]={color:'w',kind:'p'}; assert.equal(legalMoves(p,CLASSIC).filter(m=>m.from===8).length,4); assert.equal(legalMoves(p,{...CLASSIC,promotion:'n'}).find(m=>m.from===8)?.promotion,'n'); });
-test('giveaway requires captures and treats the king as an ordinary piece', () => {const p=bare();p.board[60]={color:'w',kind:'k'};p.board[52]={color:'b',kind:'r'};const r=PRESETS[2].rules; assert.equal(legalMoves(p,r).length,1);assert.equal(legalMoves(p,r)[0].to,52);const next=applyMove(p,legalMoves(p,r)[0]);assert.equal(outcome(next,r)?.winner,'b');});
+test('giveaway requires captures and treats the king as an ordinary piece', () => {const p=bare();p.board[60]={color:'w',kind:'k'};p.board[52]={color:'b',kind:'r'};const r=PRESETS.find(p => p.id === 'giveaway')!.rules; assert.equal(legalMoves(p,r).length,1);assert.equal(legalMoves(p,r)[0].to,52);const next=applyMove(p,legalMoves(p,r)[0]);assert.equal(outcome(next,r)?.winner,'b');});
 test('hill, capture, pawn and knight variants change the actual rules',()=>{const p=bare();p.board[35]={color:'w',kind:'k'};p.board[4]={color:'b',kind:'k'};assert.equal(outcome(p,{...CLASSIC,goal:'hill'})?.winner,'w');p.board[4]=null;assert.equal(outcome(p,{...CLASSIC,goal:'capture'})?.winner,'w');assert.equal(legalMoves(initialPosition(),{...CLASSIC,doubleStep:false}).length,12);const n=bare();n.board[27]={color:'w',kind:'n'};assert.equal(legalMoves(n,{...CLASSIC,goal:'capture',superKnights:true}).length,16);n.board[27]={color:'w',kind:'p'};n.board[36]={color:'b',kind:'r'};assert.ok(legalMoves(n,{...CLASSIC,goal:'capture',backwardCapture:true}).some(m=>m.to===36));});
 test('a pinned piece cannot expose its king',()=>{const p=bare();p.board[60]={color:'w',kind:'k'};p.board[52]={color:'w',kind:'r'};p.board[4]={color:'b',kind:'r'};p.board[0]={color:'b',kind:'k'};assert.ok(!inCheck(p,'w',CLASSIC));assert.ok(legalMoves(p,CLASSIC).filter(m=>m.from===52).every(m=>m.to%8===4));});
 test('random starts with except-pawns preserves pawns, shuffles back ranks, and mirrors sides', () => {
@@ -70,4 +70,88 @@ test('AI calculates legal moves from randomized starting positions (except-pawns
     const legal = legalMoves(p, rules);
     assert.ok(legal.some(m => m.from === move.from && m.to === move.to));
   }
+});
+test('crazyhouse captures enter pockets and promoted pieces return as pawns', () => {
+  const rules = { ...CLASSIC, pieceDrops: true };
+  const p = bare();
+  p.pockets = emptyPockets();
+  p.board[60] = { color: 'w', kind: 'k' };
+  p.board[4] = { color: 'b', kind: 'k' };
+  p.board[52] = { color: 'w', kind: 'r' };
+  p.board[12] = { color: 'b', kind: 'q' };
+  const afterCapture = applyMove(p, { from: 52, to: 12 });
+  assert.equal(afterCapture.pockets?.w.q, 1);
+  assert.equal(afterCapture.pockets?.b.q, 0);
+  // White will be able to legally drop this queen on its next turn
+  assert.ok(legalMoves(applyMove(afterCapture, { from: 4, to: 3 }), rules).some(m => m.drop === 'q'));
+
+  const p2 = bare();
+  p2.pockets = emptyPockets();
+  p2.board[60] = { color: 'w', kind: 'k' };
+  p2.board[4] = { color: 'b', kind: 'k' };
+  p2.board[52] = { color: 'w', kind: 'r' };
+  p2.board[12] = { color: 'b', kind: 'q', promoted: true };
+  const afterPromotedCapture = applyMove(p2, { from: 52, to: 12 });
+  assert.equal(afterPromotedCapture.pockets?.w.q, 0);
+  assert.equal(afterPromotedCapture.pockets?.w.p, 1);
+});
+test('crazyhouse drops obey rank restrictions, king safety, and notation', () => {
+  const rules = { ...CLASSIC, pieceDrops: true };
+  const p = bare();
+  p.pockets = emptyPockets();
+  p.pockets.w.p = 1;
+  p.pockets.w.n = 1;
+  p.board[60] = { color: 'w', kind: 'k' };
+  p.board[4] = { color: 'b', kind: 'k' };
+  const moves = legalMoves(p, rules);
+
+  const pawnDrops = moves.filter(m => m.drop === 'p');
+  assert.ok(pawnDrops.every(m => m.to >= 8 && m.to < 56));
+  assert.ok(pawnDrops.some(m => m.to === 28));
+
+  const knightDrops = moves.filter(m => m.drop === 'n');
+  assert.ok(knightDrops.some(m => m.to === 0));
+  assert.ok(knightDrops.some(m => m.to === 63));
+
+  const inCheckPos = bare();
+  inCheckPos.pockets = emptyPockets();
+  inCheckPos.pockets.w.n = 1;
+  inCheckPos.pockets.w.p = 1;
+  inCheckPos.board[60] = { color: 'w', kind: 'k' };
+  inCheckPos.board[4] = { color: 'b', kind: 'k' };
+  inCheckPos.board[20] = { color: 'b', kind: 'r' };
+  assert.ok(inCheck(inCheckPos, 'w', rules));
+  const checkResolvingMoves = legalMoves(inCheckPos, rules);
+  const blockingDrops = checkResolvingMoves.filter(m => m.drop !== undefined);
+  assert.ok(blockingDrops.length > 0);
+  assert.ok(blockingDrops.every(m => [52, 44, 36, 28].includes(m.to)));
+
+  const matePos = bare();
+  matePos.pockets = emptyPockets();
+  matePos.pockets.w.q = 1;
+  matePos.board[60] = { color: 'w', kind: 'k' };
+  matePos.board[7] = { color: 'b', kind: 'k' };  // h8
+  matePos.board[6] = { color: 'b', kind: 'p' };  // g8
+  matePos.board[15] = { color: 'b', kind: 'p' }; // h7
+  matePos.board[20] = { color: 'w', kind: 'n' }; // e6 knight defending g7
+  assert.equal(inCheck(matePos, 'b', rules), false);
+  const dropQ = { from: -1, to: 14, drop: 'q' as const };
+  assert.equal(notation(matePos, dropQ, rules), 'Q@g7#');
+  const mated = applyMove(matePos, dropQ);
+  assert.deepEqual(outcome(mated, rules), { winner: 'w', reason: 'Checkmate' });
+});
+test('AI evaluates and selects crazyhouse drop moves', () => {
+  const rules = { ...CLASSIC, pieceDrops: true };
+  const p = bare();
+  p.pockets = emptyPockets();
+  p.pockets.w.q = 1;
+  p.board[60] = { color: 'w', kind: 'k' };
+  p.board[7] = { color: 'b', kind: 'k' };  // h8
+  p.board[6] = { color: 'b', kind: 'p' };  // g8
+  p.board[15] = { color: 'b', kind: 'p' }; // h7
+  p.board[20] = { color: 'w', kind: 'n' }; // e6 knight defending g7
+  const bestMove = chooseMove(p, rules, 'medium');
+  assert.ok(bestMove !== null);
+  assert.equal(bestMove.drop, 'q');
+  assert.equal(bestMove.to, 14);
 });

@@ -1,10 +1,11 @@
 export type Color = 'w' | 'b';
 export type Kind = 'p' | 'n' | 'b' | 'r' | 'q' | 'k';
-export type Piece = { color: Color; kind: Kind };
+export type Piece = { color: Color; kind: Kind; promoted?: boolean };
 export type RandomStart = 'off' | 'except-pawns' | 'all';
 export type Rules = {
   goal: 'checkmate' | 'capture' | 'hill' | 'giveaway';
   randomStart: RandomStart;
+  pieceDrops: boolean;
   markEligiblePieces: boolean;
   forcedCapture: boolean;
   castling: boolean;
@@ -14,11 +15,16 @@ export type Rules = {
   superKnights: boolean;
   promotion: 'choice' | 'q' | 'n';
 };
-export type Move = { from: number; to: number; promotion?: Kind; ep?: number; rook?: [number, number] };
-export type Position = { board: (Piece | null)[]; turn: Color; rights: string; ep: number | null; halfmove: number; ply: number };
-export const CLASSIC: Rules = { goal: 'checkmate', randomStart: 'off', markEligiblePieces: false, forcedCapture: false, castling: true, enPassant: true, doubleStep: true, backwardCapture: false, superKnights: false, promotion: 'choice' };
+export type PocketKind = Exclude<Kind, 'k'>;
+export const POCKET_KINDS: PocketKind[] = ['p', 'n', 'b', 'r', 'q'];
+export type Pockets = Record<Color, Record<PocketKind, number>>;
+export const emptyPockets = (): Pockets => ({ w: { p: 0, n: 0, b: 0, r: 0, q: 0 }, b: { p: 0, n: 0, b: 0, r: 0, q: 0 } });
+export type Move = { drop?: PocketKind; from: number; to: number; promotion?: Kind; ep?: number; rook?: [number, number] };
+export type Position = { pockets?: Pockets; board: (Piece | null)[]; turn: Color; rights: string; ep: number | null; halfmove: number; ply: number };
+export const CLASSIC: Rules = { goal: 'checkmate', randomStart: 'off', pieceDrops: false, markEligiblePieces: false, forcedCapture: false, castling: true, enPassant: true, doubleStep: true, backwardCapture: false, superKnights: false, promotion: 'choice' };
 export const PRESETS: { id: string; name: string; description: string; icon: string; rules: Rules }[] = [
   { id: 'classic', name: 'Classic', description: 'The original game', icon: '♔', rules: { ...CLASSIC } },
+  { id: 'crazyhouse', name: 'Crazyhouse', description: 'Capture, pocket, drop', icon: '♜', rules: { ...CLASSIC, pieceDrops: true } },
   { id: 'hill', name: 'King of the Hill', description: 'Race to the center', icon: '⚑', rules: { ...CLASSIC, goal: 'hill' } },
   { id: 'giveaway', name: 'Giveaway', description: 'Lose pieces to win', icon: '♙', rules: { ...CLASSIC, goal: 'giveaway', markEligiblePieces: true, forcedCapture: true, castling: false } },
   { id: 'wild', name: 'Wild knights', description: 'Knights gain a step', icon: '♞', rules: { ...CLASSIC, superKnights: true, backwardCapture: true } },
@@ -45,7 +51,7 @@ export function initialPosition(rules: Rules = CLASSIC, random: () => number = M
           board[(7 - r) * 8 + c] = { color: 'w', kind };
         }
       }
-      pos = { board, turn: 'w', rights: '', ep: null, halfmove: 0, ply: 0 };
+      pos = { pockets: rules.pieceDrops ? emptyPockets() : undefined, board, turn: 'w', rights: '', ep: null, halfmove: 0, ply: 0 };
     } while (royal(rules) && (inCheck(pos, 'w', rules) || inCheck(pos, 'b', rules)));
     return pos;
   }
@@ -61,7 +67,7 @@ export function initialPosition(rules: Rules = CLASSIC, random: () => number = M
     if (order.join('') === 'rnbqkbnr') [order[1], order[2]] = [order[2], order[1]];
   }
   const isRandom = mode === 'except-pawns' || mode === true;
-  return { board: Array.from({ length: 64 }, (_, i) => i < 8 ? { color: 'b', kind: order[i] } : i < 16 ? { color: 'b', kind: 'p' } : i < 48 ? null : i < 56 ? { color: 'w', kind: 'p' } : { color: 'w', kind: order[i - 56] }), turn: 'w', rights: isRandom ? '' : 'KQkq', ep: null, halfmove: 0, ply: 0 };
+  return { pockets: rules.pieceDrops ? emptyPockets() : undefined, board: Array.from({ length: 64 }, (_, i) => i < 8 ? { color: 'b', kind: order[i] } : i < 16 ? { color: 'b', kind: 'p' } : i < 48 ? null : i < 56 ? { color: 'w', kind: 'p' } : { color: 'w', kind: order[i - 56] }), turn: 'w', rights: isRandom ? '' : 'KQkq', ep: null, halfmove: 0, ply: 0 };
 }
 const diagonals = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
 const straight = [[0, 1], [0, -1], [1, 0], [-1, 0]];
@@ -92,15 +98,24 @@ export function inCheck(pos: Position, color: Color, rules: Rules): boolean {
   return king < 0 || attacked(pos, king, opposite(color), rules);
 }
 export function applyMove(pos: Position, m: Move): Position {
-  const board = pos.board.slice(), p = board[m.from]!;
+  const board = pos.board.slice();
+  const pockets = pos.pockets ? { w: { ...pos.pockets.w }, b: { ...pos.pockets.b } } : undefined;
+  if (m.drop) {
+    if (!pockets || pockets[pos.turn][m.drop] < 1 || m.to < 0 || m.to > 63 || board[m.to] || (m.drop === 'p' && (m.to < 8 || m.to >= 56))) throw new Error('Invalid drop');
+    pockets[pos.turn][m.drop]--;
+    board[m.to] = { color: pos.turn, kind: m.drop };
+    return { ...pos, board, pockets, turn: opposite(pos.turn), ep: null, halfmove: 0, ply: pos.ply + 1 };
+  }
+  const p = board[m.from]!;
   const captured = board[m.to] || (m.ep !== undefined ? board[m.ep] : null);
-  board[m.from] = null; board[m.to] = m.promotion ? { color: p.color, kind: m.promotion } : p;
+  if (pockets && captured && captured.kind !== 'k') pockets[pos.turn][captured.promoted ? 'p' : captured.kind]++;
+  board[m.from] = null; board[m.to] = m.promotion ? { color: p.color, kind: m.promotion, promoted: true } : p;
   if (m.ep !== undefined) board[m.ep] = null;
   if (m.rook) { board[m.rook[1]] = board[m.rook[0]]; board[m.rook[0]] = null; }
   let rights = pos.rights;
   if (p.kind === 'k') rights = rights.replace(p.color === 'w' ? /[KQ]/g : /[kq]/g, '');
   for (const [sq, right] of [[0, 'q'], [7, 'k'], [56, 'Q'], [63, 'K']] as const) if (m.from === sq || m.to === sq) rights = rights.replace(right, '');
-  return { board, turn: opposite(pos.turn), rights, ep: p.kind === 'p' && Math.abs(m.to - m.from) === 16 ? (m.to + m.from) / 2 : null, halfmove: p.kind === 'p' || captured ? 0 : pos.halfmove + 1, ply: pos.ply + 1 };
+  return { board, pockets, turn: opposite(pos.turn), rights, ep: p.kind === 'p' && Math.abs(m.to - m.from) === 16 ? (m.to + m.from) / 2 : null, halfmove: p.kind === 'p' || captured ? 0 : pos.halfmove + 1, ply: pos.ply + 1 };
 }
 function pseudoMoves(pos: Position, rules: Rules): Move[] {
   const moves: Move[] = [];
@@ -154,6 +169,12 @@ function pseudoMoves(pos: Position, rules: Rules): Move[] {
       }
     }
   }
+  if (rules.pieceDrops && pos.pockets) {
+    for (const drop of POCKET_KINDS) {
+      if (pos.pockets[pos.turn][drop] < 1) continue;
+      for (let to = 0; to < 64; to++) if (!pos.board[to] && (drop !== 'p' || to >= 8 && to < 56)) moves.push({ from: -1, to, drop });
+    }
+  }
   return moves;
 }
 export function legalMoves(pos: Position, rules: Rules): Move[] {
@@ -169,15 +190,15 @@ export type Outcome = { winner: Color | null; reason: string };
 export function outcome(pos: Position, rules: Rules, moves?: Move[]): Outcome | null {
   if (rules.goal === 'capture') for (const color of ['w', 'b'] as Color[]) if (!pos.board.some(p => p?.color === color && p.kind === 'k')) return { winner: opposite(color), reason: 'King captured' };
   if (rules.goal === 'hill') for (const i of [27, 28, 35, 36]) if (pos.board[i]?.kind === 'k') return { winner: pos.board[i]!.color, reason: 'King reached the center' };
-  if (rules.goal === 'giveaway' && !pos.board.some(p => p?.color === pos.turn)) return { winner: pos.turn, reason: 'All pieces given away' };
+  if (rules.goal === 'giveaway' && !pos.board.some(p => p?.color === pos.turn) && !POCKET_KINDS.some(k => (pos.pockets?.[pos.turn][k] ?? 0) > 0)) return { winner: pos.turn, reason: 'All pieces given away' };
   const available = moves ?? legalMoves(pos, rules);
   if (!available.length) {
     if (rules.goal === 'giveaway') return { winner: pos.turn, reason: 'No legal moves — you win' };
     if (royal(rules) && inCheck(pos, pos.turn, rules)) return { winner: opposite(pos.turn), reason: 'Checkmate' };
     return { winner: null, reason: 'Stalemate' };
   }
-  if (pos.halfmove >= 100) return { winner: null, reason: '50-move draw' };
-  if (rules.goal === 'checkmate' && !rules.superKnights) {
+  if (!rules.pieceDrops && pos.halfmove >= 100) return { winner: null, reason: '50-move draw' };
+  if (rules.goal === 'checkmate' && !rules.superKnights && !rules.pieceDrops) {
     const nonKings = pos.board.flatMap((p, i) => p && p.kind !== 'k' ? [{ ...p, i }] : []);
     if (!nonKings.length || nonKings.length === 1 && ['b', 'n'].includes(nonKings[0].kind) || nonKings.length > 0 && nonKings.every(p => p.kind === 'b') && new Set(nonKings.map(p => (Math.floor(p.i / 8) + p.i % 8) % 2)).size === 1) return { winner: null, reason: 'Insufficient material' };
   }
@@ -185,9 +206,14 @@ export function outcome(pos: Position, rules: Rules, moves?: Move[]): Outcome | 
 }
 export function positionKey(pos: Position, rules: Rules): string {
   const effectiveEp = pos.ep !== null && legalMoves(pos, rules).some(m => m.ep !== undefined) ? pos.ep : '-';
-  return pos.board.map(p => p ? (p.color === 'w' ? p.kind.toUpperCase() : p.kind) : '.').join('') + pos.turn + (rules.castling ? pos.rights : '-') + effectiveEp;
+  return pos.board.map(p => p ? (p.color === 'w' ? p.kind.toUpperCase() : p.kind) + (rules.pieceDrops && p.promoted ? '~' : '') : '.').join('') + pos.turn + (rules.castling ? pos.rights : '-') + effectiveEp + (rules.pieceDrops ? JSON.stringify(pos.pockets ?? emptyPockets()) : '');
 }
 export function notation(pos: Position, move: Move, rules: Rules): string {
+  if (move.drop) {
+    const next = applyMove(pos, move);
+    const suffix = royal(rules) && inCheck(next, next.turn, rules) ? (outcome(next, rules)?.reason === 'Checkmate' ? '#' : '+') : '';
+    return move.drop.toUpperCase() + '@' + squareName(move.to) + suffix;
+  }
   if (move.rook) return move.to > move.from ? 'O-O' : 'O-O-O';
   const p = pos.board[move.from]!; const capture = !!pos.board[move.to] || move.ep !== undefined;
   let prefix = p.kind === 'p' ? (capture ? squareName(move.from)[0] : '') : p.kind.toUpperCase();

@@ -1,4 +1,4 @@
-import { applyMove, legalMoves, outcome } from './engine.ts';
+import { applyMove, legalMoves, outcome, POCKET_KINDS } from './engine.ts';
 import type { Position, Rules, Move } from './engine.ts';
 export type Difficulty = 'easy' | 'medium' | 'hard';
 const values = { p: 100, n: 320, b: 335, r: 500, q: 900, k: 20000 };
@@ -18,6 +18,9 @@ function evaluate(pos: Position, rules: Rules): number {
     }
     score += p.color === pos.turn ? value : -value;
   });
+  if (rules.pieceDrops && pos.pockets) for (const color of ['w', 'b'] as const) for (const kind of POCKET_KINDS) {
+    score += (color === pos.turn ? 1 : -1) * pos.pockets[color][kind] * (rules.goal === 'giveaway' ? -100 - values[kind] / 10 : values[kind] * 1.1);
+  }
   return score;
 }
 export function chooseMove(pos: Position, rules: Rules, difficulty: Difficulty, random = Math.random): Move | null {
@@ -30,11 +33,12 @@ export function chooseMove(pos: Position, rules: Rules, difficulty: Difficulty, 
     return ms.slice().sort((a, b) => priority(p, b) - priority(p, a));
   }
   function priority(p: Position, m: Move) {
+    if (m.drop) return 40 + (7 - Math.abs(3.5 - Math.floor(m.to / 8)) - Math.abs(3.5 - m.to % 8)) * 5;
     const target = p.board[m.to] || (m.ep !== undefined ? p.board[m.ep] : null);
     return (target ? values[target.kind] * 10 - values[p.board[m.from]!.kind] : 0) + (m.promotion ? values[m.promotion] : 0);
   }
   function search(p: Position, depth: number, alpha: number, beta: number, ply: number): number {
-    if ((++nodes & 127) === 0 && Date.now() >= deadline) throw new Error('timeout');
+    if ((++nodes & 15) === 0 && Date.now() >= deadline) throw new Error('timeout');
     const ms = legalMoves(p, rules), end = outcome(p, rules, ms);
     if (end) return end.winner === null ? 0 : end.winner === p.turn ? 100000 - ply : -100000 + ply;
     if (depth === 0) return evaluate(p, rules);

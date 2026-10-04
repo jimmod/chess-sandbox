@@ -7,8 +7,8 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CLASSIC, PRESETS, initialPosition, legalMoves, applyMove, outcome, inCheck, royal, notation, positionKey, squareName, opposite } from '@/lib/chess/engine';
-import type { Position, Rules, Move, Color, Piece } from '@/lib/chess/engine';
+import { CLASSIC, PRESETS, POCKET_KINDS, initialPosition, legalMoves, applyMove, outcome, inCheck, royal, notation, positionKey, squareName, opposite } from '@/lib/chess/engine';
+import type { Position, Rules, Move, Color, Piece, PocketKind } from '@/lib/chess/engine';
 import type { Difficulty } from '@/lib/chess/ai';
 import ChessWorker from '@/lib/chess/ai.worker?worker';
 
@@ -35,6 +35,7 @@ export default function Home() {
   const [activeSideChoice, setActiveSideChoice] = useState<SideChoice>('w');
   const [flipped, setFlipped] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
+  const [selectedPocket, setSelectedPocket] = useState<PocketKind | null>(null);
   const [promotion, setPromotion] = useState<Move[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [aiError, setAiError] = useState('');
@@ -51,7 +52,7 @@ export default function Home() {
     const key = positionKey(pos, rules);
     if (history.filter(h => positionKey(h.position, rules) === key).length >= 3) return { winner: null, reason: 'Threefold repetition' };
     return null;
-  }, [pos, rules, moves, history, resigned, human]);
+  }, [pos, rules, moves, history, resigned]);
   const eligiblePieces = useMemo(() => new Set(moves.map(m => m.from)), [moves]);
   const showEligiblePieces = rules.markEligiblePieces && !end && (localGame || pos.turn === human);
   const check = royal(rules) && inCheck(pos, pos.turn, rules);
@@ -65,7 +66,7 @@ export default function Home() {
   function commitMove(m: Move) {
     const next = applyMove(pos, m);
     setHistory(h => [...h, { position: next, move: m, label: notation(pos, m, rules) }]);
-    setSelected(null); setPromotion([]); setAiError('');
+    setSelected(null); setSelectedPocket(null); setPromotion([]); setAiError('');
   }
   const commitRef = useRef(commitMove);
   useEffect(() => { commitRef.current = commitMove; });
@@ -88,20 +89,21 @@ export default function Home() {
   function startGame() {
     const side: Color = draftHuman === 'random' ? (Math.random() < 0.5 ? 'w' : 'b') : draftHuman;
     workerRef.current?.terminate(); setRules({ ...draft }); setActiveSideChoice(draftHuman); setHuman(side); setFlipped(side === 'b');
-    setHistory([{ position: initialPosition(draft) }]); setSelected(null); setPromotion([]); setResigned(null); setAiError(''); setConfirmNew(false);
+    setHistory([{ position: initialPosition(draft) }]); setSelected(null); setSelectedPocket(null); setPromotion([]); setResigned(null); setAiError(''); setConfirmNew(false);
   }
   function requestNew() { if (history.length > 1 && !end) setConfirmNew(true); else startGame(); }
   function clickSquare(i: number) {
     if (end || (!localGame && pos.turn !== human) || thinking) return;
-    const candidates = moves.filter(m => m.from === selected && m.to === i);
+    const candidates = moves.filter(m => m.to === i && (selectedPocket ? m.drop === selectedPocket : !m.drop && m.from === selected));
     if (candidates.length > 1) { setPromotion(candidates); return; }
     if (candidates.length === 1) { commitMove(candidates[0]); return; }
+    setSelectedPocket(null);
     setSelected(selected === i ? null : pos.board[i]?.color === (localGame ? pos.turn : human) ? i : null);
   }
   function undo() {
     workerRef.current?.terminate();
     const remove = !localGame && pos.turn === human && history.length > 2 ? 2 : 1;
-    setHistory(h => h.slice(0, Math.max(1, h.length - remove))); setResigned(null); setSelected(null); setPromotion([]); setAiError('');
+    setHistory(h => h.slice(0, Math.max(1, h.length - remove))); setResigned(null); setSelected(null); setSelectedPocket(null); setPromotion([]); setAiError('');
   }
   const liveRef = useRef({ pos, rules, moves, status });
   useEffect(() => { liveRef.current = { pos, rules, moves, status }; });
@@ -113,12 +115,13 @@ export default function Home() {
     try { Promise.resolve(context.registerTool({ name: 'read_chess_game', description: 'Read the current chess board, active rules, game status, and legal moves.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true }, execute: (input: unknown) => {
       if (input === null || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length) throw new Error('Expected an empty object.');
       const g = liveRef.current;
-      return { status: g.status, turn: g.pos.turn, rules: g.rules, pieces: g.pos.board.flatMap((p, i) => p ? [{ square: squareName(i), ...p }] : []), legalMoves: g.moves.map(m => squareName(m.from) + squareName(m.to) + (m.promotion ?? '')) };
+      return { status: g.status, turn: g.pos.turn, rules: g.rules, pieces: g.pos.board.flatMap((p, i) => p ? [{ square: squareName(i), ...p }] : []), pockets: g.pos.pockets ?? null, legalMoves: g.moves.map(m => m.drop ? m.drop.toUpperCase() + '@' + squareName(m.to) : squareName(m.from) + squareName(m.to) + (m.promotion ?? '')) };
     } }, { signal: lifecycle.signal })).catch(() => {}); } catch { /* Optional browser capability. */ }
     return () => lifecycle.abort();
   }, []);
 
   const toggles: [keyof Rules, string, string][] = [
+    ['pieceDrops', 'Piece drops / pockets', 'Captured pieces become reserves you can drop.'],
     ['markEligiblePieces', 'Mark eligible pieces', 'Mark your pieces that have a legal move.'],
     ['forcedCapture', 'Forced captures', 'If a capture is available, take it.'],
     ['castling', 'Castling', 'Let king and rook move together.'],
@@ -153,18 +156,29 @@ export default function Home() {
             })}
           </div>
         </div>
+        {rules.pieceDrops && <div className="pockets" aria-label="Pocket reserves">
+          {(['w', 'b'] as const).map(color => <div className="pocket" key={color}>
+            <span className="pocket-title">{color === 'w' ? 'White' : 'Black'} pocket</span>
+            <div className="pocket-pieces">{POCKET_KINDS.map(kind => {
+              const count = pos.pockets?.[color][kind] ?? 0;
+              const canDrop = !end && color === pos.turn && (localGame || color === human) && moves.some(m => m.drop === kind);
+              return <button key={kind} disabled={!canDrop} aria-label={`${color === 'w' ? 'White' : 'Black'} pocket ${names[kind]}, ${count} available`} aria-pressed={color === pos.turn && selectedPocket === kind} onClick={() => { setSelected(null); setSelectedPocket(selectedPocket === kind ? null : kind); }}><PieceGlyph piece={{color, kind}} /><small>{count}</small></button>;
+            })}</div>
+          </div>)}
+          <p className="pocket-help">{selectedPocket ? `Choose a highlighted square to drop your ${names[selectedPocket]}.` : 'Select a reserve piece, then an empty square. Pawn drops: ranks 2–7.'}</p>
+        </div>}
         <div className="board" role="group" aria-label="Chessboard. Select a piece then a highlighted square. Arrow keys navigate squares.">
           {Array.from({ length: 64 }, (_, display) => {
             const i = flipped ? 63 - display : display, piece = pos.board[i];
             const eligible = showEligiblePieces && eligiblePieces.has(i);
-            const possible = moves.some(m => m.from === selected && m.to === i);
+            const possible = moves.some(m => m.to === i && (selectedPocket ? m.drop === selectedPocket : !m.drop && m.from === selected));
             const isCheck = check && piece?.kind === 'k' && piece.color === pos.turn;
-            return <button key={i} id={`sq-${i}`} aria-label={`${squareName(i)}${piece ? ` ${piece.color === 'w' ? 'White' : 'Black'} ${names[piece.kind]}` : ' empty'}${eligible ? ', can move' : ''}${possible ? ', legal move' : ''}`} aria-pressed={selected === i} onClick={() => clickSquare(i)} onKeyDown={e => {
+            return <button key={i} id={`sq-${i}`} aria-label={`${squareName(i)}${piece ? ` ${piece.color === 'w' ? 'White' : 'Black'} ${names[piece.kind]}${piece.promoted && rules.pieceDrops ? ' (promoted pawn)' : ''}` : ' empty'}${eligible ? ', can move' : ''}${possible ? ', legal move' : ''}`} aria-pressed={selected === i} onClick={() => clickSquare(i)} onKeyDown={e => {
               const offsets: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowUp: -8, ArrowDown: 8 };
-              if (e.key === 'Escape') setSelected(null);
+              if (e.key === 'Escape') { setSelected(null); setSelectedPocket(null); }
               if (e.key in offsets) { e.preventDefault(); const target = display + offsets[e.key]; if (target >= 0 && target < 64) document.getElementById(`sq-${flipped ? 63 - target : target}`)?.focus(); }
             }} className={`square ${(Math.floor(i / 8) + i % 8) % 2 ? 'dark-square' : 'light-square'} ${selected === i ? 'selected' : ''} ${eligible ? 'eligible-piece' : ''} ${lastMove && (lastMove.from === i || lastMove.to === i) ? 'last-move' : ''} ${isCheck ? 'in-check' : ''} ${rules.goal === 'hill' && [27, 28, 35, 36].includes(i) ? 'hill-square' : ''}`}>
-              {piece && <PieceGlyph piece={piece} />}{eligible && <span className="eligible-marker" aria-hidden="true" />}{possible && <span className={piece ? 'capture-target' : 'move-target'} />}
+              {piece && <PieceGlyph piece={piece} />}{piece?.promoted && rules.pieceDrops && <small className="promoted-mark" aria-hidden="true">~</small>}{eligible && <span className="eligible-marker" aria-hidden="true" />}{possible && <span className={piece ? 'capture-target' : 'move-target'} />}
               {display % 8 === 0 && <small className="rank">{8 - Math.floor(i / 8)}</small>}{display >= 56 && <small className="file">{'abcdefgh'[i % 8]}</small>}
             </button>;
           })}
@@ -183,10 +197,10 @@ export default function Home() {
           {toggles.map(([key, title, hint]) => <div className="rule-row" key={key}><label htmlFor={`rule-${key}`}><strong>{title}</strong><small>{hint}</small></label><Switch id={`rule-${key}`} checked={key === 'castling' && draft.randomStart !== 'off' ? false : Boolean(draft[key])} disabled={(draft.goal === 'giveaway' && (key === 'forcedCapture' || key === 'castling')) || (draft.randomStart !== 'off' && key === 'castling')} onCheckedChange={v => setDraft(d => ({ ...d, [key]: v }))} /></div>)}
           <label className="field-label">Pawn promotion</label><Choice label="Pawn promotion" value={draft.promotion} onChange={v => setDraft(d => ({ ...d, promotion: v as Rules['promotion'] }))} options={ [['choice', 'Choose any piece'], ['q', 'Always queen'], ['n', 'Always knight']] } />
         </div>}
-        <h3>Meet your opponent</h3><RadioGroup aria-label="Opponent" className="difficulty-group" value={localGame ? 'human' : difficulty} onValueChange={v => { workerRef.current?.terminate(); setLocalGame(v === 'human'); if (v !== 'human') setDifficulty(v as Difficulty); setSelected(null); setPromotion([]); setAiError(''); }}>{(['easy', 'medium', 'hard', 'human'] as const).map((v, i) => <label key={v} className={`difficulty-choice ${(localGame ? 'human' : difficulty) === v ? 'active' : ''}`}><RadioGroupItem className="sr-only" value={v} /><span className="level-bars" aria-hidden="true">{v === 'human' ? <Users size={13} /> : [0,1,2].map(n => <i key={n} className={n <= i ? 'lit' : ''} />)}</span>{v[0].toUpperCase() + v.slice(1)}</label>)}</RadioGroup><p className="level-description">{localGame ? 'Two players, one board. Take turns on this device.' : levelCopy[difficulty]}</p>
+        <h3>Meet your opponent</h3><RadioGroup aria-label="Opponent" className="difficulty-group" value={localGame ? 'human' : difficulty} onValueChange={v => { workerRef.current?.terminate(); setLocalGame(v === 'human'); if (v !== 'human') setDifficulty(v as Difficulty); setSelected(null); setSelectedPocket(null); setPromotion([]); setAiError(''); }}>{(['easy', 'medium', 'hard', 'human'] as const).map((v, i) => <label key={v} className={`difficulty-choice ${(localGame ? 'human' : difficulty) === v ? 'active' : ''}`}><RadioGroupItem className="sr-only" value={v} /><span className="level-bars" aria-hidden="true">{v === 'human' ? <Users size={13} /> : [0,1,2].map(n => <i key={n} className={n <= i ? 'lit' : ''} />)}</span>{v[0].toUpperCase() + v.slice(1)}</label>)}</RadioGroup><p className="level-description">{localGame ? 'Two players, one board. Take turns on this device.' : levelCopy[difficulty]}</p>
         {!localGame && <div className="side-choice"><label className="field-label">Play as</label><Choice label="Play as" value={draftHuman} onChange={v => setDraftHuman(v as SideChoice)} options={ [['w', 'White'], ['b', 'Black'], ['random', 'Random']] } /></div>}
         <button className="primary" onClick={requestNew}><span>♟</span>{changed ? 'Apply rules & start game' : 'New game'}</button><p className="setup-note">{changed ? 'Your changes take effect in a new game.' : 'New board. Fresh possibilities.'}</p>
-        <div className="active-rules"><span>ON THIS BOARD</span><p>{goals[rules.goal]}{rules.randomStart !== 'off' ? ` · Random start (${rules.randomStart === 'all' ? 'all pieces' : 'except pawns'}) · No castling` : ''}{rules.forcedCapture && rules.goal !== 'giveaway' ? ' · Forced captures' : ''}{rules.superKnights ? ' · Super knights' : ''}{rules.backwardCapture ? ' · Backward captures' : ''}</p></div>
+        <div className="active-rules"><span>ON THIS BOARD</span><p>{goals[rules.goal]}{rules.pieceDrops ? ' · Piece drops' : ''}{rules.randomStart !== 'off' ? ` · Random start (${rules.randomStart === 'all' ? 'all pieces' : 'except pawns'}) · No castling` : ''}{rules.forcedCapture && rules.goal !== 'giveaway' ? ' · Forced captures' : ''}{rules.superKnights ? ' · Super knights' : ''}{rules.backwardCapture ? ' · Backward captures' : ''}</p></div>
       </aside>
     </div>
     <footer><span>CHESS SANDBOX / EXPERIMENT. PLAY. REPEAT.</span><span>{localGame ? 'Your rules. Shared board.' : 'Your rules. Same rules for the AI.'}</span></footer>

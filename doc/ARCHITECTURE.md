@@ -45,20 +45,20 @@ The Cloudflare Worker serves the application; it does not play the game. The bro
 
 ## Position and rule model
 
-`Position.board` is a 64-element array of pieces or null, indexed from a8 (0) to h1 (63). A piece stores color (`w` or `b`) and kind (`p`, `n`, `b`, `r`, `q`, `k`). The position also stores side to move, castling rights, en passant target, halfmove counter, and ply count.
+`Position.board` is a 64-element array of pieces or null, indexed from a8 (0) to h1 (63). A piece stores color (`w` or `b`), kind (`p`, `n`, `b`, `r`, `q`, `k`), and an optional `promoted` flag. When `pieceDrops` is active, `Position.pockets` tracks available reserve pieces for White and Black (`p`, `n`, `b`, `r`, `q`). The position also stores side to move, castling rights, en passant target, halfmove counter, and ply count.
 
-`Move` contains source and destination indexes, with optional promotion kind, en passant victim index, and rook relocation for castling. `applyMove` returns a new position and board array. Callers must supply a legal move; move application itself is not a validation boundary.
+`Move` contains source and destination indexes (`from: -1` for pocket drops), with optional `drop` piece kind, promotion kind, en passant victim index, and rook relocation for castling. `applyMove` returns a new position, updating board and pocket reserves. When a piece is captured in Crazyhouse, it enters the capturer's pocket in the captured piece's kind, except promoted pieces (`promoted: true`) which return as pawns. Callers must supply a legal move; move application itself is not a validation boundary.
 
-`Rules` contains ten options: victory condition, forced captures, castling, en passant, pawn double step, backward pawn captures, super knights, promotion policy, random starting position, and eligible-piece marking. Presets are Classic, King of the Hill, Giveaway, and Wild Knights.
+`Rules` contains eleven options: victory condition, piece drops / reserves, forced captures, castling, en passant, pawn double step, backward pawn captures, super knights, promotion policy, random starting position, and eligible-piece marking. Presets are Classic, Crazyhouse, King of the Hill, Giveaway, and Wild Knights.
 
-The engine generates pseudo-legal moves, filters king exposure for royal variants, then enforces mandatory captures. Giveaway always requires available captures, disables castling, and treats kings as ordinary pieces. Capture-the-king ignores check. Hill wins by reaching d4/e4/d5/e5 with a king or by checkmate. Super knights retain knight jumps and gain adjacent steps; backward pawn captures do not permit backward non-capturing moves.
+The engine generates pseudo-legal moves, filters king exposure for royal variants, then enforces mandatory captures. Drops are generated for all empty squares (pawns restricted to ranks 2–7). Drops obey king safety: they can block an existing check, cannot be played elsewhere while leaving the king in check, and cannot expose the king to check. Giveaway always requires available captures, disables castling, and treats kings as ordinary pieces. Capture-the-king ignores check. Hill wins by reaching d4/e4/d5/e5 with a king or by checkmate. Super knights retain knight jumps and gain adjacent steps; backward pawn captures do not permit backward non-capturing moves.
 
 ## State and move lifecycle
 
 1. Setup edits update `draft` rules and `draftHuman`. Active `rules` and `human` remain unchanged until a new game starts. Difficulty changes apply immediately.
-2. Selecting a human piece reveals destinations from `legalMoves`. A destination with multiple promotion moves opens a choice dialog.
-3. `commitMove` applies the move, computes notation, appends a snapshot, and clears selection.
-4. The UI checks terminal engine outcomes, resignation, and threefold repetition across its stored history.
+2. Selecting a human piece or pocket reserve reveals legal destinations from `legalMoves`. Selecting a pocket piece highlights all legal drop squares on the board. A destination with multiple promotion moves opens a choice dialog.
+3. `commitMove` applies the move, computes notation (standard crazyhouse notation like `N@e4` or `Q@g7#`), appends a snapshot, and clears selection.
+4. The UI checks terminal engine outcomes, resignation, and threefold repetition (which incorporates pocket reserves and promoted piece marks) across its stored history.
 5. On an AI turn, an effect creates a browser worker and sends `{ position, rules, difficulty }`. It returns `{ move }` or `{ error }`.
 6. The effect terminates the worker on cleanup. New game, undo, resignation, and difficulty changes cancel obsolete search. Errors show a retry action.
 
