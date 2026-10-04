@@ -16,6 +16,7 @@ const glyphs = { w: { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟'
 const names = { k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' };
 const levelCopy = { easy: 'A relaxed opponent. Room to experiment.', medium: 'Looks ahead. Keeps you on your toes.', hard: 'Deeper search. A sharper challenge.' };
 const goals = { checkmate: 'Checkmate the king', capture: 'Capture the king', hill: 'King to the center', giveaway: 'Give away all pieces' };
+type SideChoice = Color | 'random';
 type Snapshot = { position: Position; move?: Move; label?: string };
 function PieceGlyph({ piece }: { piece: Piece }) { return <span aria-hidden="true" className={piece.color === 'w' ? 'white-piece' : 'black-piece'}>{glyphs[piece.color][piece.kind]}</span>; }
 function Choice({ value, onChange, options, label }: { value: string; onChange: (s: string) => void; options: [string, string][]; label: string }) {
@@ -27,7 +28,8 @@ export default function Home() {
   const [draft, setDraft] = useState<Rules>({ ...CLASSIC });
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [human, setHuman] = useState<Color>('w');
-  const [draftHuman, setDraftHuman] = useState<Color>('w');
+  const [draftHuman, setDraftHuman] = useState<SideChoice>('w');
+  const [activeSideChoice, setActiveSideChoice] = useState<SideChoice>('w');
   const [flipped, setFlipped] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [promotion, setPromotion] = useState<Move[]>([]);
@@ -51,7 +53,7 @@ export default function Home() {
   const showEligiblePieces = rules.markEligiblePieces && !end && pos.turn === human;
   const check = royal(rules) && inCheck(pos, pos.turn, rules);
   const draftPreset = PRESETS.find(p => JSON.stringify(p.rules) === JSON.stringify(draft));
-  const changed = JSON.stringify(draft) !== JSON.stringify(rules) || draftHuman !== human;
+  const changed = JSON.stringify(draft) !== JSON.stringify(rules) || draftHuman !== activeSideChoice;
   const lastMove = history[history.length - 1].move;
   const moveList = history.slice(1);
   const thinking = !end && pos.turn !== human && !aiError;
@@ -81,7 +83,8 @@ export default function Home() {
     } catch { queueMicrotask(() => setAiError('This browser could not start the AI. Please try another browser.')); }
   }, [pos, rules, difficulty, human, end, retry]);
   function startGame() {
-    workerRef.current?.terminate(); setRules({ ...draft }); setHuman(draftHuman); setFlipped(draftHuman === 'b');
+    const side: Color = draftHuman === 'random' ? (Math.random() < 0.5 ? 'w' : 'b') : draftHuman;
+    workerRef.current?.terminate(); setRules({ ...draft }); setActiveSideChoice(draftHuman); setHuman(side); setFlipped(side === 'b');
     setHistory([{ position: initialPosition(draft) }]); setSelected(null); setPromotion([]); setResigned(false); setAiError(''); setConfirmNew(false);
   }
   function requestNew() { if (history.length > 1 && !end) setConfirmNew(true); else startGame(); }
@@ -167,7 +170,7 @@ export default function Home() {
           <label className="field-label">Pawn promotion</label><Choice label="Pawn promotion" value={draft.promotion} onChange={v => setDraft(d => ({ ...d, promotion: v as Rules['promotion'] }))} options={ [['choice', 'Choose any piece'], ['q', 'Always queen'], ['n', 'Always knight']] } />
         </div>}
         <h3>Meet your opponent</h3><RadioGroup aria-label="AI difficulty" className="difficulty-group" value={difficulty} onValueChange={v => setDifficulty(v as Difficulty)}>{(['easy', 'medium', 'hard'] as const).map((v, i) => <label key={v} className={`difficulty-choice ${difficulty === v ? 'active' : ''}`}><RadioGroupItem className="sr-only" value={v} /><span className="level-bars" aria-hidden="true">{[0,1,2].map(n => <i key={n} className={n <= i ? 'lit' : ''} />)}</span>{v[0].toUpperCase() + v.slice(1)}</label>)}</RadioGroup><p className="level-description">{levelCopy[difficulty]}</p>
-        <div className="side-choice"><label className="field-label">Play as</label><Choice label="Play as" value={draftHuman} onChange={v => setDraftHuman(v as Color)} options={ [['w', 'White'], ['b', 'Black']] } /></div>
+        <div className="side-choice"><label className="field-label">Play as</label><Choice label="Play as" value={draftHuman} onChange={v => setDraftHuman(v as SideChoice)} options={ [['w', 'White'], ['b', 'Black'], ['random', 'Random']] } /></div>
         <button className="primary" onClick={requestNew}><span>♟</span>{changed ? 'Apply rules & start game' : 'New game'}</button><p className="setup-note">{changed ? 'Your changes take effect in a new game.' : 'New board. Fresh possibilities.'}</p>
         <div className="active-rules"><span>ON THIS BOARD</span><p>{goals[rules.goal]}{rules.randomStart !== 'off' ? ` · Random start (${rules.randomStart === 'all' ? 'all pieces' : 'except pawns'}) · No castling` : ''}{rules.forcedCapture && rules.goal !== 'giveaway' ? ' · Forced captures' : ''}{rules.superKnights ? ' · Super knights' : ''}{rules.backwardCapture ? ' · Backward captures' : ''}</p></div>
       </aside>

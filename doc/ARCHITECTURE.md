@@ -117,3 +117,7 @@ Randomness runs only when starting a game, never during rendering or AI search. 
 `Rules.markEligiblePieces` is a visual assistance option: it never changes legal moves or AI evaluation. It defaults to false except for the Giveaway preset. Selecting the Giveaway win condition also enables it; players can turn it off. Like other setup options, edits apply to the next game.
 
 The UI derives eligible source squares directly from the shared engine's `legalMoves` result. On the human turn, and only while the game is ongoing, eligible pieces receive an inset outline, corner marker, and accessible “can move” label. Mandatory capture filtering therefore automatically restricts the markers to legal capturing pieces, including en passant, without separate UI rules. Markers are hidden during AI turns and after a result; destination markers remain separate.
+
+## Random player side
+
+The Play as selector accepts White, Black, or Random. `draftHuman` and `activeSideChoice` retain the selected preference separately from the resolved `human` color. Starting a game samples Random with equal probability for each color, updates the active preference, and orients the board for that color. Black starts trigger the normal AI opening turn. The preference remains Random for subsequent games, and does not incorrectly appear as an unapplied change after resolution. Changing the selector mid-game only stages the next game; flipping and undo do not reroll the side.

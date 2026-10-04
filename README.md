@@ -25,6 +25,8 @@ See [the architecture document](doc/ARCHITECTURE.md) for system boundaries, stat
 - Radix/Shadcn primitives for accessible switches, selectors, difficulty radios, and dialogs.
 - No external AI API, paid inference, or game backend is required.
 
+Choose White, Black, or Random in **Play as**. Random chooses your side independently for each new game and orients the board for you.
+
 ## Rules
 
 Four presets: Classic, King of the Hill, Giveaway, and Wild Knights. Ten controls customize win condition, forced captures, castling, en passant, pawn double steps, backward pawn captures, super knights, promotion, randomized starting positions, and eligible-piece marking. Marking is enabled by default for Giveaway and highlights only your pieces with a legal move (only capturing pieces when captures are mandatory). Random starts offer three options: Off, Except the pawns (shuffles back ranks identically for both colors while pawns stay in place), and All (shuffles all 16 pieces and pawns across both home ranks with a non-check opening guarantee). Both active random modes mirror armies symmetrically and disable castling. New rule settings apply when starting a new game; AI difficulty changes immediately.
