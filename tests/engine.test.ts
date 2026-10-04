@@ -14,12 +14,12 @@ test('promotion offers four choices or the custom forced piece', () => { const p
 test('giveaway requires captures and treats the king as an ordinary piece', () => {const p=bare();p.board[60]={color:'w',kind:'k'};p.board[52]={color:'b',kind:'r'};const r=PRESETS[2].rules; assert.equal(legalMoves(p,r).length,1);assert.equal(legalMoves(p,r)[0].to,52);const next=applyMove(p,legalMoves(p,r)[0]);assert.equal(outcome(next,r)?.winner,'b');});
 test('hill, capture, pawn and knight variants change the actual rules',()=>{const p=bare();p.board[35]={color:'w',kind:'k'};p.board[4]={color:'b',kind:'k'};assert.equal(outcome(p,{...CLASSIC,goal:'hill'})?.winner,'w');p.board[4]=null;assert.equal(outcome(p,{...CLASSIC,goal:'capture'})?.winner,'w');assert.equal(legalMoves(initialPosition(),{...CLASSIC,doubleStep:false}).length,12);const n=bare();n.board[27]={color:'w',kind:'n'};assert.equal(legalMoves(n,{...CLASSIC,goal:'capture',superKnights:true}).length,16);n.board[27]={color:'w',kind:'p'};n.board[36]={color:'b',kind:'r'};assert.ok(legalMoves(n,{...CLASSIC,goal:'capture',backwardCapture:true}).some(m=>m.to===36));});
 test('a pinned piece cannot expose its king',()=>{const p=bare();p.board[60]={color:'w',kind:'k'};p.board[52]={color:'w',kind:'r'};p.board[4]={color:'b',kind:'r'};p.board[0]={color:'b',kind:'k'};assert.ok(!inCheck(p,'w',CLASSIC));assert.ok(legalMoves(p,CLASSIC).filter(m=>m.from===52).every(m=>m.to%8===4));});
-test('random starts preserve armies, mirror sides, shield kings, and disable castling', () => {
+test('random starts with except-pawns preserves pawns, shuffles back ranks, and mirrors sides', () => {
   let seed = 42;
   const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
   const seen = new Set<string>();
   for (let i = 0; i < 100; i++) {
-    const rules = { ...CLASSIC, randomStart: true };
+    const rules = { ...CLASSIC, randomStart: 'except-pawns' as const };
     const p = initialPosition(rules, random);
     const top = p.board.slice(0,8).map(p => p!.kind);
     seen.add(top.join(''));
@@ -37,11 +37,37 @@ test('random starts preserve armies, mirror sides, shield kings, and disable cas
   assert.ok(seen.size > 50);
   assert.equal(initialPosition(CLASSIC).rights, 'KQkq');
 });
-test('AI calculates legal moves from randomized starting positions', () => {
-  const rules = { ...CLASSIC, randomStart: true };
-  const p = initialPosition(rules, () => 0.42);
-  const move = chooseMove(p, rules, 'easy');
-  assert.ok(move !== null);
-  const legal = legalMoves(p, rules);
-  assert.ok(legal.some(m => m.from === move.from && m.to === move.to));
+test('random starts with all randomizes all 16 pieces, mirrors ranks, and prevents check', () => {
+  let seed = 12345;
+  const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+  const expectedArmy = ['r','r','n','n','b','b','q','k','p','p','p','p','p','p','p','p'].sort();
+  for (let i = 0; i < 100; i++) {
+    const rules = { ...CLASSIC, randomStart: 'all' as const };
+    const p = initialPosition(rules, random);
+    const black16 = p.board.slice(0, 16).map(sq => sq!.kind).sort();
+    const white16 = p.board.slice(48, 64).map(sq => sq!.kind).sort();
+    assert.deepEqual(black16, expectedArmy);
+    assert.deepEqual(white16, expectedArmy);
+    // Verify rank-reflected symmetry
+    for (let r = 0; r < 2; r++) {
+      for (let c = 0; c < 8; c++) {
+        assert.equal(p.board[r * 8 + c]?.kind, p.board[(7 - r) * 8 + c]?.kind);
+      }
+    }
+    assert.equal(p.rights, '');
+    assert.equal(inCheck(p, 'w', rules), false);
+    assert.equal(inCheck(p, 'b', rules), false);
+    assert.ok(legalMoves(p, rules).length > 0);
+    assert.equal(outcome(p, rules), null);
+  }
+});
+test('AI calculates legal moves from randomized starting positions (except-pawns and all)', () => {
+  for (const mode of ['except-pawns', 'all'] as const) {
+    const rules = { ...CLASSIC, randomStart: mode };
+    const p = initialPosition(rules, () => 0.42);
+    const move = chooseMove(p, rules, 'easy');
+    assert.ok(move !== null);
+    const legal = legalMoves(p, rules);
+    assert.ok(legal.some(m => m.from === move.from && m.to === move.to));
+  }
 });

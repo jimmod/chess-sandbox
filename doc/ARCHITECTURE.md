@@ -102,6 +102,12 @@ Keep this document about the shipped architecture. Update README links and relev
 
 ## Randomized starting positions
 
-`initialPosition(rules, random)` accepts the active rules and an injectable random source for reproducible tests. With `randomStart` enabled, Fisher–Yates shuffles the eight back-rank pieces once and mirrors the order for both colors. Pawns stay on their usual ranks, shielding kings. A classic-order result swaps two pieces so the opening visibly differs. This is a back-rank shuffle, not Chess960: bishops need not occupy opposite square colors. Castling rights are empty throughout these games regardless of the stored castling preference, and the setup UI disables the castling switch while random start is selected.
+`initialPosition(rules, random)` accepts the active rules and an injectable random source for reproducible tests. `randomStart` supports three options:
+
+- `off`: Standard initial chess layout and castling rights.
+- `except-pawns`: Fisher–Yates shuffles the eight back-rank pieces once and mirrors the order for both colors. Pawns stay on their usual ranks, shielding kings. A classic-order result swaps two pieces so the opening visibly differs.
+- `all`: Shuffles all 16 pieces and pawns across each player's home ranks (ranks 1–2 for White, ranks 7–8 for Black), mirrored rank-symmetrically. Redraws if either king would start under check.
+
+With any randomized start active (`except-pawns` or `all`), castling rights are empty throughout the game regardless of the stored castling preference, and the setup UI disables the castling switch.
 
 Randomness runs only when starting a game, never during rendering or AI search. History retains the generated position so undo restores that same opening. Each new game samples a fresh arrangement; repeats are possible. Standard initial positions and preset defaults are unchanged.

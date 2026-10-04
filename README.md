@@ -27,7 +27,7 @@ See [the architecture document](doc/ARCHITECTURE.md) for system boundaries, stat
 
 ## Rules
 
-Four presets: Classic, King of the Hill, Giveaway, and Wild Knights. Nine controls customize win condition, forced captures, castling, en passant, pawn double steps, backward pawn captures, super knights, promotion, and randomized starting positions. Random starts shuffle the back ranks identically for both colors, keep pawns in place, and disable castling. New rule settings apply when starting a new game; AI difficulty changes immediately.
+Four presets: Classic, King of the Hill, Giveaway, and Wild Knights. Nine controls customize win condition, forced captures, castling, en passant, pawn double steps, backward pawn captures, super knights, promotion, and randomized starting positions. Random starts offer three options: Off, Except the pawns (shuffles back ranks identically for both colors while pawns stay in place), and All (shuffles all 16 pieces and pawns across both home ranks with a non-check opening guarantee). Both active random modes mirror armies symmetrically and disable castling. New rule settings apply when starting a new game; AI difficulty changes immediately.
 
 Both players use identical move generation. Giveaway forces captures, disables check and castling, and wins by losing all pieces or having no legal moves. King of the Hill also allows checkmate wins. Capture-the-king ignores check. Super knights retain their normal jumps and gain king-like steps. Backward pawn captures do not allow backward quiet moves.
 
