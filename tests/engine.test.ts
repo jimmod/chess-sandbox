@@ -325,4 +325,19 @@ test('AI can search and select moves in Total Annihilation', () => {
   // White rook at 52 can capture pawn at 12
   assert.ok(legalMoves(p, annRules).some(m => m.from === move.from && m.to === move.to));
 });
+test('total annihilation rules: king can move into kill zones (attacked squares) and adjacent to enemy king', () => {
+  const annRules = PRESETS.find(p => p.id === 'annihilation')!.rules;
+  const p = bare();
+  p.turn = 'w';
+  p.board[60] = { color: 'w', kind: 'k' }; // e1 king
+  p.board[36] = { color: 'b', kind: 'r' }; // e4 rook attacking e3 and e2
+  p.board[53] = { color: 'b', kind: 'k' }; // f2 king adjacent to e1 and e2
+
+  const moves = legalMoves(p, annRules).filter(m => m.from === 60);
+  // In classic chess, e1 king cannot move to e2 (attacked by rook and king) or capture f2.
+  // In total annihilation, e2 (kill zone) and f2 (capturing enemy king) are both fully legal.
+  assert.ok(moves.some(m => m.to === 52)); // e2 (in the kill zone)
+  assert.ok(moves.some(m => m.to === 53)); // capturing enemy king directly
+});
+
 

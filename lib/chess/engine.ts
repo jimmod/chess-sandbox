@@ -82,6 +82,7 @@ export const PRESETS: { id: string; name: string; description: string; icon: str
       rules: [
         'The King can be captured like any ordinary piece without ending the game.',
         'Check and checkmate do not exist—you can move pieces freely and king safety is ignored.',
+        'The King can move into attacked squares ("kill zones") without restriction.',
         'Win by capturing every single opposing piece on the board.',
         'If a player has pieces remaining but has no legal moves left, they lose.',
       ],
