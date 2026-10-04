@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { initialPosition, legalMoves, applyMove, CLASSIC, outcome, inCheck, squareIndex, PRESETS, emptyPockets, notation } from '../lib/chess/engine.ts';
+import { initialPosition, legalMoves, applyMove, CLASSIC, outcome, inCheck, squareIndex, PRESETS, emptyPockets, notation, legalDuckSquares } from '../lib/chess/engine.ts';
 import type { Position, Rules } from '../lib/chess/engine.ts';
 import { chooseMove } from '../lib/chess/ai.ts';
 function play(p: Position, from: string, to: string, r: Rules = CLASSIC) { const m = legalMoves(p, r).find(m => m.from === squareIndex(from) && m.to === squareIndex(to)); assert.ok(m, `${from}-${to}`); return applyMove(p, m); }
@@ -154,4 +154,113 @@ test('AI evaluates and selects crazyhouse drop moves', () => {
   assert.ok(bestMove !== null);
   assert.equal(bestMove.drop, 'q');
   assert.equal(bestMove.to, 14);
+});
+test('duck blocks sliding rays, pawn steps, and castling paths', () => {
+  const duckRules = PRESETS.find(p => p.id === 'duck')!.rules;
+  const p = bare();
+  p.board[56] = { color: 'w', kind: 'r' }; // a1
+  p.board[32] = { color: 'b', kind: 'p' }; // a4
+  p.board[40] = null; // a3
+  p.board[48] = null; // a2
+  p.duck = 40; // duck on a3
+
+  // Rook cannot move onto or through duck on a3
+  const rookMoves = legalMoves(p, duckRules).filter(m => m.from === 56);
+  assert.ok(rookMoves.some(m => m.to === 48)); // a2 is reachable
+  assert.ok(!rookMoves.some(m => m.to === 40)); // a3 (duck) is blocked
+  assert.ok(!rookMoves.some(m => m.to === 32)); // a4 is blocked by duck
+
+  // Pawn blocked by duck
+  const pPawn = bare();
+  pPawn.board[52] = { color: 'w', kind: 'p' }; // e2
+  pPawn.duck = 44; // duck on e3
+  const pawnMoves1 = legalMoves(pPawn, duckRules).filter(m => m.from === 52);
+  assert.equal(pawnMoves1.length, 0); // cannot step to e3 or double-step to e4
+
+  pPawn.duck = 36; // duck on e4
+  const pawnMoves2 = legalMoves(pPawn, duckRules).filter(m => m.from === 52);
+  assert.equal(pawnMoves2.length, 1);
+  assert.equal(pawnMoves2[0].to, 44); // can single step to e3, but not e4
+
+  // Knight can jump over duck, but cannot land on it
+  const pKnight = bare();
+  pKnight.board[57] = { color: 'w', kind: 'n' }; // b1
+  pKnight.duck = 42; // c3
+  const knightMoves = legalMoves(pKnight, duckRules).filter(m => m.from === 57);
+  assert.ok(!knightMoves.some(m => m.to === 42)); // cannot land on c3
+  assert.ok(knightMoves.some(m => m.to === 40)); // can land on a3
+
+  // Duck prevents castling through or into its square
+  const pCastle = bare();
+  pCastle.rights = 'K';
+  pCastle.board[60] = { color: 'w', kind: 'k' };
+  pCastle.board[63] = { color: 'w', kind: 'r' };
+  pCastle.duck = 61; // f1
+  assert.equal(legalMoves(pCastle, duckRules).some(m => m.rook !== undefined), false);
+});
+test('duck must be moved to an empty square and cannot stay on the same square', () => {
+  const duckRules = PRESETS.find(p => p.id === 'duck')!.rules;
+  const p = bare();
+  p.board[0] = { color: 'b', kind: 'k' };
+  p.board[60] = { color: 'w', kind: 'k' };
+  p.duck = 36; // duck currently on e4
+
+  const validSqs = legalDuckSquares(p);
+  assert.ok(!validSqs.includes(36)); // cannot remain on e4
+  assert.ok(!validSqs.includes(0));  // cannot be on occupied square a8
+  assert.ok(!validSqs.includes(60)); // cannot be on occupied square e1
+  assert.equal(validSqs.length, 61); // 64 - 2 pieces - 1 current duck
+
+  // First move when duck is null: duck can be placed on any empty square
+  const pInit = initialPosition(duckRules);
+  const initDuckSqs = legalDuckSquares(pInit);
+  assert.equal(initDuckSqs.length, 32); // 32 empty squares on standard board
+});
+test('duck chess win condition is direct king capture and notation records duck placement', () => {
+  const duckRules = PRESETS.find(p => p.id === 'duck')!.rules;
+  const p = bare();
+  p.board[59] = { color: 'w', kind: 'k' }; // d1 king
+  p.board[60] = { color: 'w', kind: 'q' }; // e1 queen
+  p.board[4] = { color: 'b', kind: 'k' };  // e8 king
+  p.duck = 20; // e6
+
+  // Queen cannot reach king because duck blocks e6
+  const blockedMoves = legalMoves(p, duckRules);
+  assert.ok(!blockedMoves.some(m => m.to === 4));
+
+  // Move duck away to a5 (24)
+  p.duck = 24;
+  const freeMoves = legalMoves(p, duckRules);
+  const captureKing = freeMoves.find(m => m.to === 4);
+  assert.ok(captureKing !== null);
+
+  // Directly capturing the king wins
+  const winningMove = { ...captureKing! };
+  assert.equal(notation(p, winningMove, duckRules), 'Qxe8');
+  const won = applyMove(p, winningMove);
+  assert.deepEqual(outcome(won, duckRules), { winner: 'w', reason: 'King captured' });
+
+  // Normal piece move with duck records @square
+  const normalMove = { from: 60, to: 52, duck: 36 };
+  assert.equal(notation(p, normalMove, duckRules), 'Qe2@e4');
+});
+test('AI selects winning king captures and duck placements in Duck Chess', () => {
+  const duckRules = PRESETS.find(p => p.id === 'duck')!.rules;
+  const p = bare();
+  p.board[59] = { color: 'w', kind: 'k' }; // d1 king
+  p.board[60] = { color: 'w', kind: 'q' };
+  p.board[4] = { color: 'b', kind: 'k' };
+  p.duck = 16; // a6 (duck not blocking e-file)
+
+  const move = chooseMove(p, duckRules, 'medium');
+  assert.ok(move !== null);
+  assert.equal(move.to, 4); // AI captures the king immediately to win!
+
+  // In non-immediate win, AI produces a move with a valid duck square
+  const start = initialPosition(duckRules);
+  const startMove = chooseMove(start, duckRules, 'easy');
+  assert.ok(startMove !== null);
+  assert.ok(startMove.duck !== undefined);
+  assert.ok(startMove.duck >= 0 && startMove.duck < 64);
+  assert.ok(start.board[startMove.duck] === null || startMove.duck === startMove.from);
 });

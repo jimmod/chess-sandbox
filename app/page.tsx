@@ -7,7 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CLASSIC, PRESETS, POCKET_KINDS, initialPosition, legalMoves, applyMove, outcome, inCheck, royal, notation, positionKey, squareName, opposite } from '@/lib/chess/engine';
+import { CLASSIC, PRESETS, POCKET_KINDS, initialPosition, legalMoves, applyMove, outcome, inCheck, royal, notation, positionKey, squareName, opposite, legalDuckSquares } from '@/lib/chess/engine';
 import type { Position, Rules, Move, Color, Piece, PocketKind } from '@/lib/chess/engine';
 import type { Difficulty } from '@/lib/chess/ai';
 import ChessWorker from '@/lib/chess/ai.worker?worker';
@@ -36,6 +36,7 @@ export default function Home() {
   const [flipped, setFlipped] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [selectedPocket, setSelectedPocket] = useState<PocketKind | null>(null);
+  const [pendingDuckMove, setPendingDuckMove] = useState<Move | null>(null);
   const [promotion, setPromotion] = useState<Move[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [expandedPreset, setExpandedPreset] = useState<string | null>(null);
@@ -46,6 +47,14 @@ export default function Home() {
   const [confirmResign, setConfirmResign] = useState(false);
   const workerRef = useRef<Worker | null>(null);
   const pos = history[history.length - 1].position;
+  const displayPos = useMemo(() => {
+    if (!pendingDuckMove) return pos;
+    return applyMove(pos, pendingDuckMove);
+  }, [pos, pendingDuckMove]);
+  const validDuckSquares = useMemo(() => {
+    if (!pendingDuckMove) return [];
+    return legalDuckSquares(pos, displayPos.board);
+  }, [pos, pendingDuckMove, displayPos]);
   const moves = useMemo(() => legalMoves(pos, rules), [pos, rules]);
   const end = useMemo(() => {
     if (resigned) return { winner: opposite(resigned), reason: 'Resignation' };
@@ -62,12 +71,12 @@ export default function Home() {
   const lastMove = history[history.length - 1].move;
   const moveList = history.slice(1);
   const thinking = !localGame && !end && pos.turn !== human && !aiError;
-  const status = localGame ? (end ? (end.winner === null ? 'Game drawn' : `${end.winner === 'w' ? 'White' : 'Black'} wins!`) : `${pos.turn === 'w' ? 'White' : 'Black'}${check ? ' is in check' : ' to move'}`) : end ? (end.winner === null ? 'Game drawn' : end.winner === human ? 'You win!' : 'Sandbox AI wins') : pos.turn !== human ? (aiError ? 'AI paused' : 'Sandbox AI is thinking…') : check ? 'You’re in check' : 'Your turn';
+  const status = pendingDuckMove ? 'Place the duck' : localGame ? (end ? (end.winner === null ? 'Game drawn' : `${end.winner === 'w' ? 'White' : 'Black'} wins!`) : `${pos.turn === 'w' ? 'White' : 'Black'}${check ? ' is in check' : ' to move'}`) : end ? (end.winner === null ? 'Game drawn' : end.winner === human ? 'You win!' : 'Sandbox AI wins') : pos.turn !== human ? (aiError ? 'AI paused' : 'Sandbox AI is thinking…') : check ? 'You’re in check' : 'Your turn';
 
   function commitMove(m: Move) {
     const next = applyMove(pos, m);
     setHistory(h => [...h, { position: next, move: m, label: notation(pos, m, rules) }]);
-    setSelected(null); setSelectedPocket(null); setPromotion([]); setAiError('');
+    setSelected(null); setSelectedPocket(null); setPendingDuckMove(null); setPromotion([]); setAiError('');
   }
   const commitRef = useRef(commitMove);
   useEffect(() => { commitRef.current = commitMove; });
@@ -90,21 +99,44 @@ export default function Home() {
   function startGame() {
     const side: Color = draftHuman === 'random' ? (Math.random() < 0.5 ? 'w' : 'b') : draftHuman;
     workerRef.current?.terminate(); setRules({ ...draft }); setActiveSideChoice(draftHuman); setHuman(side); setFlipped(side === 'b');
-    setHistory([{ position: initialPosition(draft) }]); setSelected(null); setSelectedPocket(null); setPromotion([]); setResigned(null); setAiError(''); setConfirmNew(false);
+    setHistory([{ position: initialPosition(draft) }]); setSelected(null); setSelectedPocket(null); setPendingDuckMove(null); setPromotion([]); setResigned(null); setAiError(''); setConfirmNew(false);
   }
   function requestNew() { if (history.length > 1 && !end) setConfirmNew(true); else startGame(); }
   function clickSquare(i: number) {
     if (end || (!localGame && pos.turn !== human) || thinking) return;
+    if (pendingDuckMove) {
+      if (validDuckSquares.includes(i)) {
+        commitMove({ ...pendingDuckMove, duck: i });
+        return;
+      }
+      if (i === pendingDuckMove.to || (displayPos.board[i]?.color === (localGame ? pos.turn : human) && i !== pendingDuckMove.to)) {
+        setPendingDuckMove(null);
+        setSelected(displayPos.board[i]?.color === (localGame ? pos.turn : human) && i !== pendingDuckMove.to ? i : null);
+        return;
+      }
+      return;
+    }
     const candidates = moves.filter(m => m.to === i && (selectedPocket ? m.drop === selectedPocket : !m.drop && m.from === selected));
     if (candidates.length > 1) { setPromotion(candidates); return; }
-    if (candidates.length === 1) { commitMove(candidates[0]); return; }
+    if (candidates.length === 1) {
+      const candidate = candidates[0];
+      if (pos.board[candidate.to]?.kind === 'k') { commitMove(candidate); return; }
+      if (rules.duckChess) {
+        setPendingDuckMove(candidate);
+        setSelected(null);
+        setSelectedPocket(null);
+        return;
+      }
+      commitMove(candidate);
+      return;
+    }
     setSelectedPocket(null);
     setSelected(selected === i ? null : pos.board[i]?.color === (localGame ? pos.turn : human) ? i : null);
   }
   function undo() {
     workerRef.current?.terminate();
     const remove = !localGame && pos.turn === human && history.length > 2 ? 2 : 1;
-    setHistory(h => h.slice(0, Math.max(1, h.length - remove))); setResigned(null); setSelected(null); setSelectedPocket(null); setPromotion([]); setAiError('');
+    setHistory(h => h.slice(0, Math.max(1, h.length - remove))); setResigned(null); setSelected(null); setSelectedPocket(null); setPendingDuckMove(null); setPromotion([]); setAiError('');
   }
   const liveRef = useRef({ pos, rules, moves, status });
   useEffect(() => { liveRef.current = { pos, rules, moves, status }; });
@@ -122,6 +154,7 @@ export default function Home() {
   }, []);
 
   const toggles: [keyof Rules, string, string][] = [
+    ['duckChess', 'Duck chess', 'Move the neutral duck to block any square after each turn.'],
     ['pieceDrops', 'Piece drops / pockets', 'Captured pieces become reserves you can drop.'],
     ['markEligiblePieces', 'Mark eligible pieces', 'Mark your pieces that have a legal move.'],
     ['forcedCapture', 'Forced captures', 'If a capture is available, take it.'],
@@ -136,10 +169,10 @@ export default function Home() {
     <div className="workspace">
       <section className="play-area" aria-label="Chess game">
         <div className={`game-status ${end ? 'finished' : check && (localGame || pos.turn === human) ? 'warning' : thinking ? 'waiting' : 'ready'}`}>
-          <div className="status-emblem" aria-hidden="true">{end ? <Trophy /> : thinking ? <LoaderCircle className="thinking-icon" /> : check && (localGame || pos.turn === human) ? <AlertTriangle /> : <span>{(localGame ? pos.turn : human) === 'w' ? '♙' : '♟'}</span>}</div>
+          <div className="status-emblem" aria-hidden="true">{end ? <Trophy /> : pendingDuckMove ? <span>🦆</span> : thinking ? <LoaderCircle className="thinking-icon" /> : check && (localGame || pos.turn === human) ? <AlertTriangle /> : <span>{(localGame ? pos.turn : human) === 'w' ? '♙' : '♟'}</span>}</div>
           <div className="status-copy" role="status" aria-live="polite" aria-atomic="true">
             <h1>{status}</h1>
-            <p>{localGame ? 'Local two-player' : `You · ${human === 'w' ? 'White' : 'Black'}`} · {end ? end.reason : `Move ${Math.floor(pos.ply / 2) + 1}`}</p>
+            <p>{localGame ? 'Local two-player' : `You · ${human === 'w' ? 'White' : 'Black'}`} · {end ? end.reason : pendingDuckMove ? 'Choose an empty square for the duck' : `Move ${Math.floor(pos.ply / 2) + 1}`}</p>
           </div>
           <div className="player-matchup" aria-label="White versus Black">
             {(['w', 'b'] as const).map((color, index) => {
@@ -168,18 +201,22 @@ export default function Home() {
           </div>)}
           <p className="pocket-help">{selectedPocket ? `Choose a highlighted square to drop your ${names[selectedPocket]}.` : 'Select a reserve piece, then an empty square. Pawn drops: ranks 2–7.'}</p>
         </div>}
+        {pendingDuckMove && <div className="duck-instruction" role="status"><span>🦆 <strong>Place the Duck:</strong> Choose any highlighted square.</span><button type="button" className="quiet-button" onClick={() => setPendingDuckMove(null)}>Change move</button></div>}
         <div className="board" role="group" aria-label="Chessboard. Select a piece then a highlighted square. Arrow keys navigate squares.">
           {Array.from({ length: 64 }, (_, display) => {
-            const i = flipped ? 63 - display : display, piece = pos.board[i];
-            const eligible = showEligiblePieces && eligiblePieces.has(i);
-            const possible = moves.some(m => m.to === i && (selectedPocket ? m.drop === selectedPocket : !m.drop && m.from === selected));
+            const i = flipped ? 63 - display : display, piece = displayPos.board[i];
+            const hasDuck = displayPos.duck === i;
+            const isDuckTarget = pendingDuckMove !== null && validDuckSquares.includes(i);
+            const eligible = !pendingDuckMove && showEligiblePieces && eligiblePieces.has(i);
+            const possible = !pendingDuckMove && moves.some(m => m.to === i && (selectedPocket ? m.drop === selectedPocket : !m.drop && m.from === selected));
             const isCheck = check && piece?.kind === 'k' && piece.color === pos.turn;
-            return <button key={i} id={`sq-${i}`} aria-label={`${squareName(i)}${piece ? ` ${piece.color === 'w' ? 'White' : 'Black'} ${names[piece.kind]}${piece.promoted && rules.pieceDrops ? ' (promoted pawn)' : ''}` : ' empty'}${eligible ? ', can move' : ''}${possible ? ', legal move' : ''}`} aria-pressed={selected === i} onClick={() => clickSquare(i)} onKeyDown={e => {
+            return <button key={i} id={`sq-${i}`} aria-label={`${squareName(i)}${hasDuck ? ' Duck blocker' : piece ? ` ${piece.color === 'w' ? 'White' : 'Black'} ${names[piece.kind]}${piece.promoted && rules.pieceDrops ? ' (promoted pawn)' : ''}` : ' empty'}${eligible ? ', can move' : ''}${possible ? ', legal move' : ''}${isDuckTarget ? ', place duck here' : ''}`} aria-pressed={selected === i || pendingDuckMove?.to === i} onClick={() => clickSquare(i)} onKeyDown={e => {
               const offsets: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowUp: -8, ArrowDown: 8 };
-              if (e.key === 'Escape') { setSelected(null); setSelectedPocket(null); }
+              if (e.key === 'Escape') { setSelected(null); setSelectedPocket(null); setPendingDuckMove(null); }
               if (e.key in offsets) { e.preventDefault(); const target = display + offsets[e.key]; if (target >= 0 && target < 64) document.getElementById(`sq-${flipped ? 63 - target : target}`)?.focus(); }
-            }} className={`square ${(Math.floor(i / 8) + i % 8) % 2 ? 'dark-square' : 'light-square'} ${selected === i ? 'selected' : ''} ${eligible ? 'eligible-piece' : ''} ${lastMove && (lastMove.from === i || lastMove.to === i) ? 'last-move' : ''} ${isCheck ? 'in-check' : ''} ${rules.goal === 'hill' && [27, 28, 35, 36].includes(i) ? 'hill-square' : ''}`}>
-              {piece && <PieceGlyph piece={piece} />}{piece?.promoted && rules.pieceDrops && <small className="promoted-mark" aria-hidden="true">~</small>}{eligible && <span className="eligible-marker" aria-hidden="true" />}{possible && <span className={piece ? 'capture-target' : 'move-target'} />}
+            }} className={`square ${(Math.floor(i / 8) + i % 8) % 2 ? 'dark-square' : 'light-square'} ${selected === i || pendingDuckMove?.to === i ? 'selected' : ''} ${eligible ? 'eligible-piece' : ''} ${lastMove && (lastMove.from === i || lastMove.to === i) ? 'last-move' : ''} ${isCheck ? 'in-check' : ''} ${rules.goal === 'hill' && [27, 28, 35, 36].includes(i) ? 'hill-square' : ''}`}>
+              {hasDuck && <span className="duck-piece" role="img" aria-label="Duck blocker">🦆</span>}
+              {piece && <PieceGlyph piece={piece} />}{piece?.promoted && rules.pieceDrops && <small className="promoted-mark" aria-hidden="true">~</small>}{eligible && <span className="eligible-marker" aria-hidden="true" />}{possible && <span className={piece ? 'capture-target' : 'move-target'} />}{isDuckTarget && <span className="duck-target" aria-hidden="true" />}
               {display % 8 === 0 && <small className="rank">{8 - Math.floor(i / 8)}</small>}{display >= 56 && <small className="file">{'abcdefgh'[i % 8]}</small>}
             </button>;
           })}
@@ -201,11 +238,20 @@ export default function Home() {
         <h3>Meet your opponent</h3><RadioGroup aria-label="Opponent" className="difficulty-group" value={localGame ? 'human' : difficulty} onValueChange={v => { workerRef.current?.terminate(); setLocalGame(v === 'human'); if (v !== 'human') setDifficulty(v as Difficulty); setSelected(null); setSelectedPocket(null); setPromotion([]); setAiError(''); }}>{(['easy', 'medium', 'hard', 'human'] as const).map((v, i) => <label key={v} className={`difficulty-choice ${(localGame ? 'human' : difficulty) === v ? 'active' : ''}`}><RadioGroupItem className="sr-only" value={v} /><span className="level-bars" aria-hidden="true">{v === 'human' ? <Users size={13} /> : [0,1,2].map(n => <i key={n} className={n <= i ? 'lit' : ''} />)}</span>{v[0].toUpperCase() + v.slice(1)}</label>)}</RadioGroup><p className="level-description">{localGame ? 'Two players, one board. Take turns on this device.' : levelCopy[difficulty]}</p>
         {!localGame && <div className="side-choice"><label className="field-label">Play as</label><Choice label="Play as" value={draftHuman} onChange={v => setDraftHuman(v as SideChoice)} options={ [['w', 'White'], ['b', 'Black'], ['random', 'Random']] } /></div>}
         <button className="primary" onClick={requestNew}><span>♟</span>{changed ? 'Apply rules & start game' : 'New game'}</button><p className="setup-note">{changed ? 'Your changes take effect in a new game.' : 'New board. Fresh possibilities.'}</p>
-        <div className="active-rules"><span>ON THIS BOARD</span><p>{goals[rules.goal]}{rules.pieceDrops ? ' · Piece drops' : ''}{rules.randomStart !== 'off' ? ` · Random start (${rules.randomStart === 'all' ? 'all pieces' : 'except pawns'}) · No castling` : ''}{rules.forcedCapture && rules.goal !== 'giveaway' ? ' · Forced captures' : ''}{rules.superKnights ? ' · Super knights' : ''}{rules.backwardCapture ? ' · Backward captures' : ''}</p></div>
+        <div className="active-rules"><span>ON THIS BOARD</span><p>{goals[rules.goal]}{rules.duckChess ? ' · Duck chess' : ''}{rules.pieceDrops ? ' · Piece drops' : ''}{rules.randomStart !== 'off' ? ` · Random start (${rules.randomStart === 'all' ? 'all pieces' : 'except pawns'}) · No castling` : ''}{rules.forcedCapture && rules.goal !== 'giveaway' ? ' · Forced captures' : ''}{rules.superKnights ? ' · Super knights' : ''}{rules.backwardCapture ? ' · Backward captures' : ''}</p></div>
       </aside>
     </div>
     <footer><span>CHESS SANDBOX / EXPERIMENT. PLAY. REPEAT.</span><span>{localGame ? 'Your rules. Shared board.' : 'Your rules. Same rules for the AI.'}</span></footer>
-    <Dialog open={promotion.length > 0} onOpenChange={open => { if (!open) setPromotion([]); }}><DialogContent className="chess-dialog"><DialogHeader><DialogTitle>Choose your promotion</DialogTitle><DialogDescription>Your pawn has reached the last rank.</DialogDescription></DialogHeader><div className="promotion-choices">{promotion.map(m => <button key={m.promotion} onClick={() => commitMove(m)} aria-label={`Promote to ${names[m.promotion!]}`}><PieceGlyph piece={{ color: pos.turn, kind: m.promotion! }} /><small>{names[m.promotion!]}</small></button>)}</div></DialogContent></Dialog>
+    <Dialog open={promotion.length > 0} onOpenChange={open => { if (!open) setPromotion([]); }}><DialogContent className="chess-dialog"><DialogHeader><DialogTitle>Choose your promotion</DialogTitle><DialogDescription>Your pawn has reached the last rank.</DialogDescription></DialogHeader><div className="promotion-choices">{promotion.map(m => <button key={m.promotion} onClick={() => {
+      if (rules.duckChess && pos.board[m.to]?.kind !== 'k') {
+        setPendingDuckMove(m);
+        setPromotion([]);
+        setSelected(null);
+        setSelectedPocket(null);
+      } else {
+        commitMove(m);
+      }
+    }} aria-label={`Promote to ${names[m.promotion!]}`}><PieceGlyph piece={{ color: pos.turn, kind: m.promotion! }} /><small>{names[m.promotion!]}</small></button>)}</div></DialogContent></Dialog>
     <Dialog open={confirmNew} onOpenChange={setConfirmNew}><DialogContent className="chess-dialog"><DialogHeader><DialogTitle>Start a fresh experiment?</DialogTitle><DialogDescription>This ends the current game and starts a new board with your selected rules.</DialogDescription></DialogHeader><button className="primary" onClick={startGame}>Start new game</button><button className="quiet-button" onClick={() => setConfirmNew(false)}>Keep playing</button></DialogContent></Dialog>
     <Dialog open={confirmResign} onOpenChange={setConfirmResign}><DialogContent className="chess-dialog"><DialogHeader><DialogTitle>Resign this game?</DialogTitle><DialogDescription>{localGame ? `${pos.turn === 'w' ? 'White' : 'Black'} resigns. ${pos.turn === 'w' ? 'Black' : 'White'} wins.` : 'Sandbox AI will win this game. You can start a new one whenever you like.'}</DialogDescription></DialogHeader><button className="primary" onClick={() => { workerRef.current?.terminate(); setResigned(localGame ? pos.turn : human); setConfirmResign(false); }}>Resign game</button><button className="quiet-button" onClick={() => setConfirmResign(false)}>Keep playing</button></DialogContent></Dialog>
   </main>;

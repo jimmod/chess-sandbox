@@ -77,3 +77,14 @@
 .pocket-pieces small{display:block;font:12px Arial,sans-serif;color:var(--foreground)}.pocket-help{grid-column:1/-1;font-size:.8125rem;line-height:1.5;color:var(--muted-foreground);margin:0}
 .promoted-mark{position:absolute;right:5px;bottom:10px;font-size:18px;font-weight:bold;z-index:3}
 @media(max-width:450px){.pockets{gap:8px;padding:10px}.pocket-pieces{gap:2px}.pocket-pieces button{font-size:23px}}
+
+.duck-piece{display:inline-block;line-height:1;font-size:.85em;filter:drop-shadow(0 3px 6px rgba(0,0,0,.5));animation:duck-wobble .3s cubic-bezier(.34,1.56,.64,1);user-select:none;pointer-events:none;z-index:2}
+@keyframes duck-wobble{0%{transform:scale(.5) rotate(-10deg)}60%{transform:scale(1.15) rotate(5deg)}100%{transform:scale(1) rotate(0)}}
+.square>span.duck-target{position:absolute;width:30%;height:30%;border-radius:50%;background:#facc15;box-shadow:0 0 10px rgba(250,204,21,.75);opacity:.9;z-index:2;filter:none;pointer-events:none;animation:duck-target-pulse 1.3s ease-in-out infinite alternate}
+@keyframes duck-target-pulse{from{transform:scale(.8);opacity:.7}to{transform:scale(1.2);opacity:1;box-shadow:0 0 16px rgba(250,204,21,1)}}
+.duck-instruction{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#352c11;border:1px solid #99741d;border-left:4px solid #facc15;border-radius:10px;padding:10px 14px;margin-bottom:14px;color:#fef08a;font-size:.875rem;animation:preset-box-fade .18s ease-out}
+.duck-instruction span{display:flex;align-items:center;gap:8px}
+.duck-instruction strong{color:#fff}
+.duck-instruction button{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:6px;color:#fef08a;padding:5px 11px;font-size:.8125rem;transition:all .15s}
+.duck-instruction button:hover{background:rgba(255,255,255,.22);color:#fff}
+@media(prefers-reduced-motion:reduce){.duck-piece{animation:none}.square>span.duck-target{animation:none}}

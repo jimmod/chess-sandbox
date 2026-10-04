@@ -5,6 +5,7 @@ export type RandomStart = 'off' | 'except-pawns' | 'all';
 export type Rules = {
   goal: 'checkmate' | 'capture' | 'hill' | 'giveaway';
   randomStart: RandomStart;
+  duckChess: boolean;
   pieceDrops: boolean;
   markEligiblePieces: boolean;
   forcedCapture: boolean;
@@ -19,9 +20,9 @@ export type PocketKind = Exclude<Kind, 'k'>;
 export const POCKET_KINDS: PocketKind[] = ['p', 'n', 'b', 'r', 'q'];
 export type Pockets = Record<Color, Record<PocketKind, number>>;
 export const emptyPockets = (): Pockets => ({ w: { p: 0, n: 0, b: 0, r: 0, q: 0 }, b: { p: 0, n: 0, b: 0, r: 0, q: 0 } });
-export type Move = { drop?: PocketKind; from: number; to: number; promotion?: Kind; ep?: number; rook?: [number, number] };
-export type Position = { pockets?: Pockets; board: (Piece | null)[]; turn: Color; rights: string; ep: number | null; halfmove: number; ply: number };
-export const CLASSIC: Rules = { goal: 'checkmate', randomStart: 'off', pieceDrops: false, markEligiblePieces: false, forcedCapture: false, castling: true, enPassant: true, doubleStep: true, backwardCapture: false, superKnights: false, promotion: 'choice' };
+export type Move = { drop?: PocketKind; duck?: number; from: number; to: number; promotion?: Kind; ep?: number; rook?: [number, number] };
+export type Position = { pockets?: Pockets; duck?: number | null; board: (Piece | null)[]; turn: Color; rights: string; ep: number | null; halfmove: number; ply: number };
+export const CLASSIC: Rules = { goal: 'checkmate', randomStart: 'off', duckChess: false, pieceDrops: false, markEligiblePieces: false, forcedCapture: false, castling: true, enPassant: true, doubleStep: true, backwardCapture: false, superKnights: false, promotion: 'choice' };
 export const PRESETS: { id: string; name: string; description: string; icon: string; rules: Rules; details: { summary: string; rules: string[] } }[] = [
   {
     id: 'classic',
@@ -51,6 +52,22 @@ export const PRESETS: { id: string; name: string; description: string; icon: str
         'Drop reserve pieces onto any empty square on your turn (pawns: ranks 2–7).',
         'Promoted pieces return to pockets as pawns (~ marks promoted pieces on board).',
         'Drops obey check rules and can block incoming attacks or deliver checkmate.',
+      ],
+    },
+  },
+  {
+    id: 'duck',
+    name: 'Duck Chess',
+    description: 'Quack, block, strike',
+    icon: '🦆',
+    rules: { ...CLASSIC, duckChess: true, goal: 'capture' },
+    details: {
+      summary: 'Move your piece, then move the neutral Duck to block any square.',
+      rules: [
+        'After moving a piece, you must place the Duck on any unoccupied square.',
+        'The Duck is completely neutral, cannot be captured, and blocks pieces from moving onto or through it.',
+        'No check or checkmate: win by capturing the opponent\'s King.',
+        'Knights can jump over the Duck.',
       ],
     },
   },
@@ -122,7 +139,7 @@ export function initialPosition(rules: Rules = CLASSIC, random: () => number = M
           board[(7 - r) * 8 + c] = { color: 'w', kind };
         }
       }
-      pos = { pockets: rules.pieceDrops ? emptyPockets() : undefined, board, turn: 'w', rights: '', ep: null, halfmove: 0, ply: 0 };
+      pos = { duck: rules.duckChess ? null : undefined, pockets: rules.pieceDrops ? emptyPockets() : undefined, board, turn: 'w', rights: '', ep: null, halfmove: 0, ply: 0 };
     } while (royal(rules) && (inCheck(pos, 'w', rules) || inCheck(pos, 'b', rules)));
     return pos;
   }
@@ -138,14 +155,14 @@ export function initialPosition(rules: Rules = CLASSIC, random: () => number = M
     if (order.join('') === 'rnbqkbnr') [order[1], order[2]] = [order[2], order[1]];
   }
   const isRandom = mode === 'except-pawns' || mode === true;
-  return { pockets: rules.pieceDrops ? emptyPockets() : undefined, board: Array.from({ length: 64 }, (_, i) => i < 8 ? { color: 'b', kind: order[i] } : i < 16 ? { color: 'b', kind: 'p' } : i < 48 ? null : i < 56 ? { color: 'w', kind: 'p' } : { color: 'w', kind: order[i - 56] }), turn: 'w', rights: isRandom ? '' : 'KQkq', ep: null, halfmove: 0, ply: 0 };
+  return { duck: rules.duckChess ? null : undefined, pockets: rules.pieceDrops ? emptyPockets() : undefined, board: Array.from({ length: 64 }, (_, i) => i < 8 ? { color: 'b', kind: order[i] } : i < 16 ? { color: 'b', kind: 'p' } : i < 48 ? null : i < 56 ? { color: 'w', kind: 'p' } : { color: 'w', kind: order[i - 56] }), turn: 'w', rights: isRandom ? '' : 'KQkq', ep: null, halfmove: 0, ply: 0 };
 }
 const diagonals = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
 const straight = [[0, 1], [0, -1], [1, 0], [-1, 0]];
 const kingSteps = [...diagonals, ...straight];
 const knightSteps = [[1, 2], [1, -2], [-1, 2], [-1, -2], [2, 1], [2, -1], [-2, 1], [-2, -1]];
 const inside = (r: number, c: number) => r >= 0 && r < 8 && c >= 0 && c < 8;
-export const royal = (rules: Rules) => rules.goal === 'checkmate' || rules.goal === 'hill';
+export const royal = (rules: Rules) => (rules.goal === 'checkmate' || rules.goal === 'hill') && !rules.duckChess;
 export function attacked(pos: Position, target: number, by: Color, rules: Rules): boolean {
   const tr = Math.floor(target / 8), tc = target % 8;
   for (let from = 0; from < 64; from++) {
@@ -158,7 +175,10 @@ export function attacked(pos: Position, target: number, by: Color, rules: Rules)
       const line = (p.kind !== 'b' && (dr === 0 || dc === 0)) || (p.kind !== 'r' && Math.abs(dr) === Math.abs(dc));
       if (!line || (!dr && !dc)) continue;
       const sr = Math.sign(dr), sc = Math.sign(dc); let r = Math.floor(from / 8) + sr, c = from % 8 + sc;
-      while (r !== tr || c !== tc) { if (pos.board[r * 8 + c]) break; r += sr; c += sc; }
+      while (r !== tr || c !== tc) {
+        if (pos.board[r * 8 + c] || (rules.duckChess && pos.duck !== null && pos.duck !== undefined && r * 8 + c === pos.duck)) break;
+        r += sr; c += sc;
+      }
       if (r === tr && c === tc) return true;
     }
   }
@@ -171,11 +191,12 @@ export function inCheck(pos: Position, color: Color, rules: Rules): boolean {
 export function applyMove(pos: Position, m: Move): Position {
   const board = pos.board.slice();
   const pockets = pos.pockets ? { w: { ...pos.pockets.w }, b: { ...pos.pockets.b } } : undefined;
+  const duck = m.duck !== undefined ? m.duck : (pos.duck ?? null);
   if (m.drop) {
     if (!pockets || pockets[pos.turn][m.drop] < 1 || m.to < 0 || m.to > 63 || board[m.to] || (m.drop === 'p' && (m.to < 8 || m.to >= 56))) throw new Error('Invalid drop');
     pockets[pos.turn][m.drop]--;
     board[m.to] = { color: pos.turn, kind: m.drop };
-    return { ...pos, board, pockets, turn: opposite(pos.turn), ep: null, halfmove: 0, ply: pos.ply + 1 };
+    return { ...pos, duck, board, pockets, turn: opposite(pos.turn), ep: null, halfmove: 0, ply: pos.ply + 1 };
   }
   const p = board[m.from]!;
   const captured = board[m.to] || (m.ep !== undefined ? board[m.ep] : null);
@@ -186,10 +207,11 @@ export function applyMove(pos: Position, m: Move): Position {
   let rights = pos.rights;
   if (p.kind === 'k') rights = rights.replace(p.color === 'w' ? /[KQ]/g : /[kq]/g, '');
   for (const [sq, right] of [[0, 'q'], [7, 'k'], [56, 'Q'], [63, 'K']] as const) if (m.from === sq || m.to === sq) rights = rights.replace(right, '');
-  return { board, pockets, turn: opposite(pos.turn), rights, ep: p.kind === 'p' && Math.abs(m.to - m.from) === 16 ? (m.to + m.from) / 2 : null, halfmove: p.kind === 'p' || captured ? 0 : pos.halfmove + 1, ply: pos.ply + 1 };
+  return { duck, board, pockets, turn: opposite(pos.turn), rights, ep: p.kind === 'p' && Math.abs(m.to - m.from) === 16 ? (m.to + m.from) / 2 : null, halfmove: p.kind === 'p' || captured ? 0 : pos.halfmove + 1, ply: pos.ply + 1 };
 }
 function pseudoMoves(pos: Position, rules: Rules): Move[] {
   const moves: Move[] = [];
+  const duckSq = rules.duckChess && pos.duck !== null && pos.duck !== undefined ? pos.duck : -1;
   function add(from: number, to: number, extra: Partial<Move> = {}) {
     const p = pos.board[from]!;
     if (p.kind === 'p' && (to < 8 || to >= 56)) {
@@ -202,13 +224,14 @@ function pseudoMoves(pos: Position, rules: Rules): Move[] {
     const r = Math.floor(from / 8), c = from % 8;
     if (p.kind === 'p') {
       const dir = p.color === 'w' ? -1 : 1, next = from + dir * 8;
-      if (inside(r + dir, c) && !pos.board[next]) {
+      if (inside(r + dir, c) && !pos.board[next] && next !== duckSq) {
         add(from, next);
-        if (rules.doubleStep && r === (p.color === 'w' ? 6 : 1) && !pos.board[from + dir * 16]) add(from, from + dir * 16);
+        if (rules.doubleStep && r === (p.color === 'w' ? 6 : 1) && !pos.board[from + dir * 16] && (from + dir * 16) !== duckSq) add(from, from + dir * 16);
       }
       for (const dr of rules.backwardCapture ? [dir, -dir] : [dir]) for (const dc of [-1, 1]) {
         if (!inside(r + dr, c + dc)) continue;
         const to = (r + dr) * 8 + c + dc, target = pos.board[to];
+        if (to === duckSq) continue;
         if (target && target.color !== p.color && (!royal(rules) || target.kind !== 'k')) add(from, to);
         if (dr === dir && rules.enPassant && pos.ep === to && !target) {
           const ep = to - dir * 8, victim = pos.board[ep];
@@ -221,7 +244,12 @@ function pseudoMoves(pos: Position, rules: Rules): Move[] {
     const steps = p.kind === 'n' ? [...knightSteps, ...(rules.superKnights ? kingSteps : [])] : p.kind === 'b' ? diagonals : p.kind === 'r' ? straight : kingSteps;
     for (const [dr, dc] of steps) for (let n = 1; n <= (sliding ? 7 : 1); n++) {
       const nr = r + dr * n, nc = c + dc * n; if (!inside(nr, nc)) break;
-      const to = nr * 8 + nc, target = pos.board[to];
+      const to = nr * 8 + nc;
+      if (to === duckSq) {
+        if (sliding) break;
+        continue;
+      }
+      const target = pos.board[to];
       if (target?.color === p.color) break;
       if (!target || !royal(rules) || target.kind !== 'k') add(from, to);
       if (target) break;
@@ -234,7 +262,8 @@ function pseudoMoves(pos: Position, rules: Rules): Move[] {
         const rookFrom = home + (kingSide ? 3 : -4), direction = kingSide ? 1 : -1;
         const rook = pos.board[rookFrom];
         if (!pos.rights.includes(right) || rook?.kind !== 'r' || rook.color !== p.color) continue;
-        if (Array.from({ length: kingSide ? 2 : 3 }, (_, i) => home + (i + 1) * direction).some(s => pos.board[s])) continue;
+        const crossed = Array.from({ length: kingSide ? 2 : 3 }, (_, i) => home + (i + 1) * direction);
+        if (crossed.some(s => pos.board[s] || s === duckSq) || rookFrom === duckSq) continue;
         if (royal(rules) && inCheck(applyMove(pos, { from, to: home + direction }), p.color, rules)) continue;
         add(from, home + 2 * direction, { rook: [rookFrom, home + direction] });
       }
@@ -243,7 +272,7 @@ function pseudoMoves(pos: Position, rules: Rules): Move[] {
   if (rules.pieceDrops && pos.pockets) {
     for (const drop of POCKET_KINDS) {
       if (pos.pockets[pos.turn][drop] < 1) continue;
-      for (let to = 0; to < 64; to++) if (!pos.board[to] && (drop !== 'p' || to >= 8 && to < 56)) moves.push({ from: -1, to, drop });
+      for (let to = 0; to < 64; to++) if (!pos.board[to] && to !== duckSq && (drop !== 'p' || to >= 8 && to < 56)) moves.push({ from: -1, to, drop });
     }
   }
   return moves;
@@ -277,21 +306,96 @@ export function outcome(pos: Position, rules: Rules, moves?: Move[]): Outcome | 
 }
 export function positionKey(pos: Position, rules: Rules): string {
   const effectiveEp = pos.ep !== null && legalMoves(pos, rules).some(m => m.ep !== undefined) ? pos.ep : '-';
-  return pos.board.map(p => p ? (p.color === 'w' ? p.kind.toUpperCase() : p.kind) + (rules.pieceDrops && p.promoted ? '~' : '') : '.').join('') + pos.turn + (rules.castling ? pos.rights : '-') + effectiveEp + (rules.pieceDrops ? JSON.stringify(pos.pockets ?? emptyPockets()) : '');
+  const duckPart = rules.duckChess && pos.duck !== null && pos.duck !== undefined ? `@${pos.duck}` : '';
+  return pos.board.map(p => p ? (p.color === 'w' ? p.kind.toUpperCase() : p.kind) + (rules.pieceDrops && p.promoted ? '~' : '') : '.').join('') + pos.turn + (rules.castling ? pos.rights : '-') + effectiveEp + (rules.pieceDrops ? JSON.stringify(pos.pockets ?? emptyPockets()) : '') + duckPart;
 }
 export function notation(pos: Position, move: Move, rules: Rules): string {
+  let base: string;
   if (move.drop) {
     const next = applyMove(pos, move);
     const suffix = royal(rules) && inCheck(next, next.turn, rules) ? (outcome(next, rules)?.reason === 'Checkmate' ? '#' : '+') : '';
-    return move.drop.toUpperCase() + '@' + squareName(move.to) + suffix;
+    base = move.drop.toUpperCase() + '@' + squareName(move.to) + suffix;
+  } else if (move.rook) {
+    base = move.to > move.from ? 'O-O' : 'O-O-O';
+  } else {
+    const p = pos.board[move.from]!; const capture = !!pos.board[move.to] || move.ep !== undefined;
+    let prefix = p.kind === 'p' ? (capture ? squareName(move.from)[0] : '') : p.kind.toUpperCase();
+    if (p.kind !== 'p') {
+      const same = legalMoves(pos, rules).filter(m => m.to === move.to && m.from !== move.from && pos.board[m.from]?.kind === p.kind);
+      if (same.length) prefix += same.every(m => m.from % 8 !== move.from % 8) ? squareName(move.from)[0] : same.every(m => Math.floor(m.from / 8) !== Math.floor(move.from / 8)) ? squareName(move.from)[1] : squareName(move.from);
+    }
+    const next = applyMove(pos, move), end = outcome(next, rules);
+    base = prefix + (capture ? 'x' : '') + squareName(move.to) + (move.promotion ? '=' + move.promotion.toUpperCase() : '') + (royal(rules) && inCheck(next, next.turn, rules) ? end?.reason === 'Checkmate' ? '#' : '+' : '');
   }
-  if (move.rook) return move.to > move.from ? 'O-O' : 'O-O-O';
-  const p = pos.board[move.from]!; const capture = !!pos.board[move.to] || move.ep !== undefined;
-  let prefix = p.kind === 'p' ? (capture ? squareName(move.from)[0] : '') : p.kind.toUpperCase();
-  if (p.kind !== 'p') {
-    const same = legalMoves(pos, rules).filter(m => m.to === move.to && m.from !== move.from && pos.board[m.from]?.kind === p.kind);
-    if (same.length) prefix += same.every(m => m.from % 8 !== move.from % 8) ? squareName(move.from)[0] : same.every(m => Math.floor(m.from / 8) !== Math.floor(move.from / 8)) ? squareName(move.from)[1] : squareName(move.from);
+  if (rules.duckChess && move.duck !== undefined && move.duck !== null && !pos.board[move.to]?.kind) {
+    // If king was captured, game ends without duck; otherwise show duck destination
+    base += '@' + squareName(move.duck);
+  } else if (rules.duckChess && move.duck !== undefined && move.duck !== null && pos.board[move.to]?.kind !== 'k') {
+    base += '@' + squareName(move.duck);
   }
-  const next = applyMove(pos, move), end = outcome(next, rules);
-  return prefix + (capture ? 'x' : '') + squareName(move.to) + (move.promotion ? '=' + move.promotion.toUpperCase() : '') + (royal(rules) && inCheck(next, next.turn, rules) ? end?.reason === 'Checkmate' ? '#' : '+' : '');
+  return base;
+}
+export function legalDuckSquares(pos: Position, afterBoard?: (Piece | null)[]): number[] {
+  const board = afterBoard ?? pos.board;
+  const currentDuck = pos.duck !== null && pos.duck !== undefined ? pos.duck : -1;
+  const res: number[] = [];
+  for (let i = 0; i < 64; i++) {
+    if (!board[i] && i !== currentDuck) res.push(i);
+  }
+  return res;
+}
+export function candidateDuckSquares(pos: Position, prevDuck?: number | null): number[] {
+  const currentDuck = prevDuck !== null && prevDuck !== undefined ? prevDuck : (pos.duck !== null && pos.duck !== undefined ? pos.duck : -1);
+  const emptySquares: number[] = [];
+  for (let i = 0; i < 64; i++) if (!pos.board[i] && i !== currentDuck) emptySquares.push(i);
+  if (!emptySquares.length) return [];
+
+  const candidates: number[] = [];
+  const opp = opposite(pos.turn);
+  const enemyColor = pos.turn;
+  const myKing = pos.board.findIndex(p => p?.color === opp && p.kind === 'k');
+  const enemyKing = pos.board.findIndex(p => p?.color === enemyColor && p.kind === 'k');
+
+  if (myKing >= 0) {
+    const kr = Math.floor(myKing / 8), kc = myKing % 8;
+    for (let from = 0; from < 64; from++) {
+      const p = pos.board[from];
+      if (!p || p.color !== enemyColor || (p.kind !== 'q' && p.kind !== 'r' && p.kind !== 'b')) continue;
+      const fr = Math.floor(from / 8), fc = from % 8;
+      const dr = kr - fr, dc = kc - fc;
+      const line = (p.kind !== 'b' && (dr === 0 || dc === 0)) || (p.kind !== 'r' && Math.abs(dr) === Math.abs(dc));
+      if (!line) continue;
+      const sr = Math.sign(dr), sc = Math.sign(dc);
+      let r = fr + sr, c = fc + sc, clear = true;
+      const ray: number[] = [];
+      while (r !== kr || c !== kc) {
+        const sq = r * 8 + c;
+        if (pos.board[sq]) { clear = false; break; }
+        ray.push(sq);
+        r += sr; c += sc;
+      }
+      if (clear && ray.length) {
+        for (const sq of ray) if (emptySquares.includes(sq) && !candidates.includes(sq)) candidates.push(sq);
+      }
+    }
+  }
+
+  if (enemyKing >= 0) {
+    const ekr = Math.floor(enemyKing / 8), ekc = enemyKing % 8;
+    for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]]) {
+      const nr = ekr + dr, nc = ekc + dc;
+      if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+        const sq = nr * 8 + nc;
+        if (emptySquares.includes(sq) && !candidates.includes(sq)) candidates.push(sq);
+      }
+    }
+  }
+
+  const centerPriority = [35, 36, 27, 28, 34, 37, 26, 29];
+  for (const sq of centerPriority) {
+    if (emptySquares.includes(sq) && !candidates.includes(sq)) candidates.push(sq);
+  }
+
+  if (!candidates.length) return emptySquares.slice(0, 3);
+  return candidates.slice(0, 4);
 }
