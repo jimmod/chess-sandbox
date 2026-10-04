@@ -174,8 +174,10 @@ export default function Home() {
         <div className={`game-status ${end ? 'finished' : check && (localGame || pos.turn === human) ? 'warning' : thinking ? 'waiting' : 'ready'}`}>
           <div className="status-emblem" aria-hidden="true">{end ? <Trophy /> : pendingDuckMove ? <DuckIcon size={30} className="duck-status-icon" /> : thinking ? <LoaderCircle className="thinking-icon" /> : check && (localGame || pos.turn === human) ? <AlertTriangle /> : <span>{(localGame ? pos.turn : human) === 'w' ? '♙' : '♟'}</span>}</div>
           <div className="status-copy" role="status" aria-live="polite" aria-atomic="true">
-            <h1>{status}</h1>
-            <p>{localGame ? 'Local two-player' : `You · ${human === 'w' ? 'White' : 'Black'}`} · {end ? end.reason : pendingDuckMove ? 'Choose an empty square for the duck' : `Move ${Math.floor(pos.ply / 2) + 1}`}</p>
+            <h1 title={status}>{status}</h1>
+            <p title={`${localGame ? 'Local two-player' : `You · ${human === 'w' ? 'White' : 'Black'}`} · ${end ? end.reason : pendingDuckMove ? 'Choose an empty square for the duck' : `Move ${Math.floor(pos.ply / 2) + 1}`}`}>
+              {localGame ? 'Local two-player' : `You · ${human === 'w' ? 'White' : 'Black'}`} · {end ? end.reason : pendingDuckMove ? 'Choose an empty square for the duck' : `Move ${Math.floor(pos.ply / 2) + 1}`}
+            </p>
           </div>
           <div className="player-matchup" aria-label="White versus Black">
             {(['w', 'b'] as const).map((color, index) => {
