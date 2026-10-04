@@ -5,6 +5,7 @@ export type RandomStart = 'off' | 'except-pawns' | 'all';
 export type Rules = {
   goal: 'checkmate' | 'capture' | 'hill' | 'giveaway';
   randomStart: RandomStart;
+  markEligiblePieces: boolean;
   forcedCapture: boolean;
   castling: boolean;
   enPassant: boolean;
@@ -15,11 +16,11 @@ export type Rules = {
 };
 export type Move = { from: number; to: number; promotion?: Kind; ep?: number; rook?: [number, number] };
 export type Position = { board: (Piece | null)[]; turn: Color; rights: string; ep: number | null; halfmove: number; ply: number };
-export const CLASSIC: Rules = { goal: 'checkmate', randomStart: 'off', forcedCapture: false, castling: true, enPassant: true, doubleStep: true, backwardCapture: false, superKnights: false, promotion: 'choice' };
+export const CLASSIC: Rules = { goal: 'checkmate', randomStart: 'off', markEligiblePieces: false, forcedCapture: false, castling: true, enPassant: true, doubleStep: true, backwardCapture: false, superKnights: false, promotion: 'choice' };
 export const PRESETS: { id: string; name: string; description: string; icon: string; rules: Rules }[] = [
   { id: 'classic', name: 'Classic', description: 'The original game', icon: '♔', rules: { ...CLASSIC } },
   { id: 'hill', name: 'King of the Hill', description: 'Race to the center', icon: '⚑', rules: { ...CLASSIC, goal: 'hill' } },
-  { id: 'giveaway', name: 'Giveaway', description: 'Lose pieces to win', icon: '♙', rules: { ...CLASSIC, goal: 'giveaway', forcedCapture: true, castling: false } },
+  { id: 'giveaway', name: 'Giveaway', description: 'Lose pieces to win', icon: '♙', rules: { ...CLASSIC, goal: 'giveaway', markEligiblePieces: true, forcedCapture: true, castling: false } },
   { id: 'wild', name: 'Wild knights', description: 'Knights gain a step', icon: '♞', rules: { ...CLASSIC, superKnights: true, backwardCapture: true } },
 ];
 export const opposite = (c: Color): Color => c === 'w' ? 'b' : 'w';

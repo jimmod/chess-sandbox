@@ -49,7 +49,7 @@ The Cloudflare Worker serves the application; it does not play the game. The bro
 
 `Move` contains source and destination indexes, with optional promotion kind, en passant victim index, and rook relocation for castling. `applyMove` returns a new position and board array. Callers must supply a legal move; move application itself is not a validation boundary.
 
-`Rules` contains nine options: victory condition, forced captures, castling, en passant, pawn double step, backward pawn captures, super knights, promotion policy, and random starting position. Presets are Classic, King of the Hill, Giveaway, and Wild Knights.
+`Rules` contains ten options: victory condition, forced captures, castling, en passant, pawn double step, backward pawn captures, super knights, promotion policy, random starting position, and eligible-piece marking. Presets are Classic, King of the Hill, Giveaway, and Wild Knights.
 
 The engine generates pseudo-legal moves, filters king exposure for royal variants, then enforces mandatory captures. Giveaway always requires available captures, disables castling, and treats kings as ordinary pieces. Capture-the-king ignores check. Hill wins by reaching d4/e4/d5/e5 with a king or by checkmate. Super knights retain knight jumps and gain adjacent steps; backward pawn captures do not permit backward non-capturing moves.
 
@@ -111,3 +111,9 @@ Keep this document about the shipped architecture. Update README links and relev
 With any randomized start active (`except-pawns` or `all`), castling rights are empty throughout the game regardless of the stored castling preference, and the setup UI disables the castling switch.
 
 Randomness runs only when starting a game, never during rendering or AI search. History retains the generated position so undo restores that same opening. Each new game samples a fresh arrangement; repeats are possible. Standard initial positions and preset defaults are unchanged.
+
+## Eligible-piece marking
+
+`Rules.markEligiblePieces` is a visual assistance option: it never changes legal moves or AI evaluation. It defaults to false except for the Giveaway preset. Selecting the Giveaway win condition also enables it; players can turn it off. Like other setup options, edits apply to the next game.
+
+The UI derives eligible source squares directly from the shared engine's `legalMoves` result. On the human turn, and only while the game is ongoing, eligible pieces receive an inset outline, corner marker, and accessible “can move” label. Mandatory capture filtering therefore automatically restricts the markers to legal capturing pieces, including en passant, without separate UI rules. Markers are hidden during AI turns and after a result; destination markers remain separate.

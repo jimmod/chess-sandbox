@@ -27,3 +27,8 @@
 .game-status.finished{background:#344022;border-color:#b5cc72;border-left-color:#e5ff96}.game-status.finished h1{color:#e5ff96}
 .thinking-icon{animation:thinking-spin 2s linear infinite}@keyframes thinking-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.thinking-icon{animation:none}}
 @media(max-width:450px){.game-status{padding:16px 12px;gap:10px;min-height:100px}.status-emblem{width:28px}.status-emblem>span{font-size:34px}.status-copy h1{font-size:1.5rem}.status-copy p{font-size:.8125rem}.opponent-badge{padding:7px}}
+
+.square.eligible-piece{outline:3px solid #dcff87;outline-offset:-4px}
+.square>span.eligible-marker{position:absolute;top:6px;right:6px;width:10px;height:10px;border-radius:50%;background:#e0ff95;border:2px solid #344720;z-index:3;filter:none;pointer-events:none}
+.eligible-legend{display:flex;align-items:center;gap:8px;font-size:.875rem;color:#cfe8b0;line-height:1.5;margin:0 0 12px}
+.eligible-legend>span{width:10px;height:10px;border-radius:50%;background:#e0ff95;flex-shrink:0}

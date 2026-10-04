@@ -47,6 +47,8 @@ export default function Home() {
     if (history.filter(h => positionKey(h.position, rules) === key).length >= 3) return { winner: null, reason: 'Threefold repetition' };
     return null;
   }, [pos, rules, moves, history, resigned, human]);
+  const eligiblePieces = useMemo(() => new Set(moves.map(m => m.from)), [moves]);
+  const showEligiblePieces = rules.markEligiblePieces && !end && pos.turn === human;
   const check = royal(rules) && inCheck(pos, pos.turn, rules);
   const draftPreset = PRESETS.find(p => JSON.stringify(p.rules) === JSON.stringify(draft));
   const changed = JSON.stringify(draft) !== JSON.stringify(rules) || draftHuman !== human;
@@ -111,6 +113,7 @@ export default function Home() {
   }, []);
 
   const toggles: [keyof Rules, string, string][] = [
+    ['markEligiblePieces', 'Mark eligible pieces', 'Mark your pieces that have a legal move.'],
     ['forcedCapture', 'Forced captures', 'If a capture is available, take it.'],
     ['castling', 'Castling', 'Let king and rook move together.'],
     ['enPassant', 'En passant', 'Capture a pawn as it passes.'],
@@ -136,18 +139,20 @@ export default function Home() {
         <div className="board" role="group" aria-label="Chessboard. Select a piece then a highlighted square. Arrow keys navigate squares.">
           {Array.from({ length: 64 }, (_, display) => {
             const i = flipped ? 63 - display : display, piece = pos.board[i];
+            const eligible = showEligiblePieces && eligiblePieces.has(i);
             const possible = moves.some(m => m.from === selected && m.to === i);
             const isCheck = check && piece?.kind === 'k' && piece.color === pos.turn;
-            return <button key={i} id={`sq-${i}`} aria-label={`${squareName(i)}${piece ? ` ${piece.color === 'w' ? 'White' : 'Black'} ${names[piece.kind]}` : ' empty'}${possible ? ', legal move' : ''}`} aria-pressed={selected === i} onClick={() => clickSquare(i)} onKeyDown={e => {
+            return <button key={i} id={`sq-${i}`} aria-label={`${squareName(i)}${piece ? ` ${piece.color === 'w' ? 'White' : 'Black'} ${names[piece.kind]}` : ' empty'}${eligible ? ', can move' : ''}${possible ? ', legal move' : ''}`} aria-pressed={selected === i} onClick={() => clickSquare(i)} onKeyDown={e => {
               const offsets: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowUp: -8, ArrowDown: 8 };
               if (e.key === 'Escape') setSelected(null);
               if (e.key in offsets) { e.preventDefault(); const target = display + offsets[e.key]; if (target >= 0 && target < 64) document.getElementById(`sq-${flipped ? 63 - target : target}`)?.focus(); }
-            }} className={`square ${(Math.floor(i / 8) + i % 8) % 2 ? 'dark-square' : 'light-square'} ${selected === i ? 'selected' : ''} ${lastMove && (lastMove.from === i || lastMove.to === i) ? 'last-move' : ''} ${isCheck ? 'in-check' : ''} ${rules.goal === 'hill' && [27, 28, 35, 36].includes(i) ? 'hill-square' : ''}`}>
-              {piece && <PieceGlyph piece={piece} />}{possible && <span className={piece ? 'capture-target' : 'move-target'} />}
+            }} className={`square ${(Math.floor(i / 8) + i % 8) % 2 ? 'dark-square' : 'light-square'} ${selected === i ? 'selected' : ''} ${eligible ? 'eligible-piece' : ''} ${lastMove && (lastMove.from === i || lastMove.to === i) ? 'last-move' : ''} ${isCheck ? 'in-check' : ''} ${rules.goal === 'hill' && [27, 28, 35, 36].includes(i) ? 'hill-square' : ''}`}>
+              {piece && <PieceGlyph piece={piece} />}{eligible && <span className="eligible-marker" aria-hidden="true" />}{possible && <span className={piece ? 'capture-target' : 'move-target'} />}
               {display % 8 === 0 && <small className="rank">{8 - Math.floor(i / 8)}</small>}{display >= 56 && <small className="file">{'abcdefgh'[i % 8]}</small>}
             </button>;
           })}
         </div>
+        {showEligiblePieces && <p className="eligible-legend"><span aria-hidden="true" /> Marked pieces can move{moves.some(m => pos.board[m.to] || m.ep !== undefined) && (rules.forcedCapture || rules.goal === 'giveaway') ? ' · A capture is required' : ''}</p>}
         {aiError && <div className="error-message" role="alert">{aiError}<button onClick={() => { setAiError(''); setRetry(n => n + 1); }}>Retry AI</button></div>}
         <div className="board-toolbar"><div><button onClick={undo} disabled={history.length <= (human === 'b' ? 2 : 1)}><RotateCcw size={15} /> Undo turn</button><button onClick={() => setFlipped(f => !f)}><RefreshCw size={15} /> Flip board</button></div><button onClick={() => setConfirmResign(true)} disabled={!!end || history.length === 1} aria-label="Resign game"><Flag size={15} /></button></div>
         <div className="move-log"><div className="move-log-title"><h3>Move history</h3><span>{moveList.length} plies</span></div>{!moveList.length ? <p className="empty-history">Every experiment starts with a move.</p> : <div className="move-rows">{Array.from({ length: Math.ceil(moveList.length / 2) }, (_, i) => <div className="move-row" key={i}><span>{i + 1}.</span><b>{moveList[i * 2]?.label}</b><b>{moveList[i * 2 + 1]?.label ?? '…'}</b></div>)}</div>}</div>
@@ -156,7 +161,7 @@ export default function Home() {
         <div className="sandbox-heading"><FlaskConical size={17} /><p className="eyebrow">YOUR GAME, REIMAGINED</p></div><h2>The rulebook is yours.</h2><p className="muted">Start with a classic. Then change the possibilities.</p>
         <div className="preset-grid">{PRESETS.map(p => <button key={p.id} className={`preset ${draftPreset?.id === p.id ? 'active' : ''}`} aria-pressed={draftPreset?.id === p.id} onClick={() => setDraft({ ...p.rules })}><b>{p.icon}</b>{p.name}<small>{p.description}</small>{draftPreset?.id === p.id && <span className="preset-check">✓</span>}</button>)}</div>
         <div className="custom-heading"><button className="custom-toggle" onClick={() => setExpanded(x => !x)} aria-expanded={expanded}><SlidersHorizontal size={16} /><span>Customize rules</span><span className="rule-count">{Object.keys(CLASSIC).filter(k => draft[k as keyof Rules] !== CLASSIC[k as keyof Rules]).length || Object.keys(CLASSIC).length} {JSON.stringify(draft) === JSON.stringify(CLASSIC) ? 'options' : 'changed'}</span>{expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</button></div>
-        {expanded && <div className="rules-editor"><label className="field-label">Win condition</label><Choice label="Win condition" value={draft.goal} onChange={v => setDraft(d => ({ ...d, goal: v as Rules['goal'], ...(v === 'giveaway' ? { forcedCapture: true, castling: false } : {}) }))} options={Object.entries(goals)} /><p className="rule-hint">{draft.goal === 'hill' ? 'Reach d4, e4, d5, or e5 with your king, or checkmate.' : draft.goal === 'giveaway' ? 'Captures are mandatory. Lose all your pieces or have no legal move to win. No check or castling.' : draft.goal === 'capture' ? 'Check is ignored. Capture the opposing king to win.' : 'Protect your king. Deliver checkmate to win.'}</p>
+        {expanded && <div className="rules-editor"><label className="field-label">Win condition</label><Choice label="Win condition" value={draft.goal} onChange={v => setDraft(d => ({ ...d, goal: v as Rules['goal'], ...(v === 'giveaway' ? { forcedCapture: true, castling: false, markEligiblePieces: true } : {}) }))} options={Object.entries(goals)} /><p className="rule-hint">{draft.goal === 'hill' ? 'Reach d4, e4, d5, or e5 with your king, or checkmate.' : draft.goal === 'giveaway' ? 'Captures are mandatory. Lose all your pieces or have no legal move to win. No check or castling.' : draft.goal === 'capture' ? 'Check is ignored. Capture the opposing king to win.' : 'Protect your king. Deliver checkmate to win.'}</p>
           <label className="field-label">Random starting position</label><Choice label="Random starting position" value={draft.randomStart} onChange={v => setDraft(d => ({ ...d, randomStart: v as Rules['randomStart'], ...(v !== 'off' ? { castling: false } : {}) }))} options={[['off', 'Off'], ['except-pawns', 'Except the pawns'], ['all', 'All']]} /><p className="rule-hint">{draft.randomStart === 'all' ? 'All 16 pieces and pawns are shuffled across both starting ranks. No castling.' : draft.randomStart === 'except-pawns' ? 'Shuffle both back ranks equally. Pawns stay on their usual ranks; no castling.' : 'Standard opening arrangement for both sides.'}</p>
           {toggles.map(([key, title, hint]) => <div className="rule-row" key={key}><label htmlFor={`rule-${key}`}><strong>{title}</strong><small>{hint}</small></label><Switch id={`rule-${key}`} checked={key === 'castling' && draft.randomStart !== 'off' ? false : Boolean(draft[key])} disabled={(draft.goal === 'giveaway' && (key === 'forcedCapture' || key === 'castling')) || (draft.randomStart !== 'off' && key === 'castling')} onCheckedChange={v => setDraft(d => ({ ...d, [key]: v }))} /></div>)}
           <label className="field-label">Pawn promotion</label><Choice label="Pawn promotion" value={draft.promotion} onChange={v => setDraft(d => ({ ...d, promotion: v as Rules['promotion'] }))} options={ [['choice', 'Choose any piece'], ['q', 'Always queen'], ['n', 'Always knight']] } />
