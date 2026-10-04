@@ -2,14 +2,15 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Chess Lab — Make your own rules",
+  title: "Chess Sandbox — Make your own rules",
   description: "Play chess against AI with a rulebook of your own. Explore custom chess variants and three difficulty levels.",
   other: {
     "codex-preview": "development",
   },
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: "/chess-sandbox-icon.png",
+    shortcut: "/chess-sandbox-icon.png",
+    apple: "/chess-sandbox-icon.png",
   },
 };
 

@@ -1,4 +1,4 @@
-# Chess Lab
+# Chess Sandbox
 
 A customizable browser chess playground with variant-aware AI.
 
@@ -13,6 +13,8 @@ npm test
 npm run typecheck
 npm run build
 ```
+
+See [the architecture document](doc/ARCHITECTURE.md) for system boundaries, state flow, AI behavior, hosting, and maintenance guidance. Update it alongside architectural changes.
 
 ## Stack and architecture
 

@@ -53,7 +53,7 @@ export default function Home() {
   const changed = JSON.stringify(draft) !== JSON.stringify(rules) || draftHuman !== human;
   const lastMove = history[history.length - 1].move;
   const moveList = history.slice(1);
-  const status = end ? (end.winner === null ? 'Game drawn' : end.winner === human ? 'You win!' : 'Lab AI wins') : pos.turn !== human ? (aiError ? 'AI paused' : 'Lab AI is thinking…') : check ? 'You’re in check' : 'Your turn';
+  const status = end ? (end.winner === null ? 'Game drawn' : end.winner === human ? 'You win!' : 'Sandbox AI wins') : pos.turn !== human ? (aiError ? 'AI paused' : 'Sandbox AI is thinking…') : check ? 'You’re in check' : 'Your turn';
 
   function commitMove(m: Move) {
     const next = applyMove(pos, m);
@@ -119,11 +119,11 @@ export default function Home() {
     ['superKnights', 'Super knights', 'Knights also move one square any way.'],
   ];
   return <main>
-    <header><a className="brand" href="/" aria-label="Chess Lab home"><span>♞</span>chess<span className="brand-light">lab</span><sup>BETA</sup></a><span className="header-note">A familiar game. Your rules.</span><span className="local-badge"><Cpu size={14} /> PLAY VS AI</span></header>
+    <header><a className="brand" href="/" aria-label="Chess Sandbox home"><img className="brand-icon" src="/chess-sandbox-icon.png" alt="" width={44} height={44} /><span className="brand-name">Chess <span className="brand-light">Sandbox</span></span><sup>BETA</sup></a><span className="header-note">A familiar game. Your rules.</span><span className="local-badge"><Cpu size={14} /> PLAY VS AI</span></header>
     <div className="workspace">
       <section className="play-area" aria-label="Chess game">
         <div className="section-heading"><div><p className="eyebrow">THE PLAYGROUND</p><h1>Make your next move.</h1></div><span className="pill">{activePreset?.name ?? 'Custom rules'}</span></div>
-        <div className="player"><span className="avatar"><Cpu size={23} /></span><div><strong>Lab AI</strong><small>{difficulty[0].toUpperCase() + difficulty.slice(1)} · {human === 'w' ? 'Black' : 'White'}</small></div><span className="player-side">{thinking ? 'THINKING…' : 'YOUR OPPONENT'}</span></div>
+        <div className="player"><span className="avatar"><Cpu size={23} /></span><div><strong>Sandbox AI</strong><small>{difficulty[0].toUpperCase() + difficulty.slice(1)} · {human === 'w' ? 'Black' : 'White'}</small></div><span className="player-side">{thinking ? 'THINKING…' : 'YOUR OPPONENT'}</span></div>
         <div className="board" role="group" aria-label="Chessboard. Select a piece then a highlighted square. Arrow keys navigate squares.">
           {Array.from({ length: 64 }, (_, display) => {
             const i = flipped ? 63 - display : display, piece = pos.board[i];
@@ -145,7 +145,7 @@ export default function Home() {
         <div className="move-log"><div className="move-log-title"><h3>Move history</h3><span>{moveList.length} plies</span></div>{!moveList.length ? <p className="empty-history">Every experiment starts with a move.</p> : <div className="move-rows">{Array.from({ length: Math.ceil(moveList.length / 2) }, (_, i) => <div className="move-row" key={i}><span>{i + 1}.</span><b>{moveList[i * 2]?.label}</b><b>{moveList[i * 2 + 1]?.label ?? '…'}</b></div>)}</div>}</div>
       </section>
       <aside className="control-panel" aria-label="Game setup">
-        <div className="lab-heading"><FlaskConical size={17} /><p className="eyebrow">YOUR GAME, REIMAGINED</p></div><h2>The rulebook is yours.</h2><p className="muted">Start with a classic. Then change the possibilities.</p>
+        <div className="sandbox-heading"><FlaskConical size={17} /><p className="eyebrow">YOUR GAME, REIMAGINED</p></div><h2>The rulebook is yours.</h2><p className="muted">Start with a classic. Then change the possibilities.</p>
         <div className="preset-grid">{PRESETS.map(p => <button key={p.id} className={`preset ${draftPreset?.id === p.id ? 'active' : ''}`} aria-pressed={draftPreset?.id === p.id} onClick={() => setDraft({ ...p.rules })}><b>{p.icon}</b>{p.name}<small>{p.description}</small>{draftPreset?.id === p.id && <span className="preset-check">✓</span>}</button>)}</div>
         <div className="custom-heading"><button className="custom-toggle" onClick={() => setExpanded(x => !x)} aria-expanded={expanded}><SlidersHorizontal size={16} /><span>Customize rules</span><span className="rule-count">{Object.keys(CLASSIC).filter(k => draft[k as keyof Rules] !== CLASSIC[k as keyof Rules]).length || '8'} {JSON.stringify(draft) === JSON.stringify(CLASSIC) ? 'options' : 'changed'}</span>{expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</button></div>
         {expanded && <div className="rules-editor"><label className="field-label">Win condition</label><Choice label="Win condition" value={draft.goal} onChange={v => setDraft(d => ({ ...d, goal: v as Rules['goal'], ...(v === 'giveaway' ? { forcedCapture: true, castling: false } : {}) }))} options={Object.entries(goals)} /><p className="rule-hint">{draft.goal === 'hill' ? 'Reach d4, e4, d5, or e5 with your king, or checkmate.' : draft.goal === 'giveaway' ? 'Captures are mandatory. Lose all your pieces or have no legal move to win. No check or castling.' : draft.goal === 'capture' ? 'Check is ignored. Capture the opposing king to win.' : 'Protect your king. Deliver checkmate to win.'}</p>
@@ -158,9 +158,9 @@ export default function Home() {
         <div className="active-rules"><span>ON THIS BOARD</span><p>{goals[rules.goal]}{rules.forcedCapture && rules.goal !== 'giveaway' ? ' · Forced captures' : ''}{rules.superKnights ? ' · Super knights' : ''}{rules.backwardCapture ? ' · Backward captures' : ''}</p></div>
       </aside>
     </div>
-    <footer><span>CHESS LAB / EXPERIMENT. PLAY. REPEAT.</span><span>Your rules. Same rules for the AI.</span></footer>
+    <footer><span>CHESS SANDBOX / EXPERIMENT. PLAY. REPEAT.</span><span>Your rules. Same rules for the AI.</span></footer>
     <Dialog open={promotion.length > 0} onOpenChange={open => { if (!open) setPromotion([]); }}><DialogContent className="chess-dialog"><DialogHeader><DialogTitle>Choose your promotion</DialogTitle><DialogDescription>Your pawn has reached the last rank.</DialogDescription></DialogHeader><div className="promotion-choices">{promotion.map(m => <button key={m.promotion} onClick={() => commitMove(m)} aria-label={`Promote to ${names[m.promotion!]}`}><PieceGlyph piece={{ color: human, kind: m.promotion! }} /><small>{names[m.promotion!]}</small></button>)}</div></DialogContent></Dialog>
     <Dialog open={confirmNew} onOpenChange={setConfirmNew}><DialogContent className="chess-dialog"><DialogHeader><DialogTitle>Start a fresh experiment?</DialogTitle><DialogDescription>This ends the current game and starts a new board with your selected rules.</DialogDescription></DialogHeader><button className="primary" onClick={startGame}>Start new game</button><button className="quiet-button" onClick={() => setConfirmNew(false)}>Keep playing</button></DialogContent></Dialog>
-    <Dialog open={confirmResign} onOpenChange={setConfirmResign}><DialogContent className="chess-dialog"><DialogHeader><DialogTitle>Resign this game?</DialogTitle><DialogDescription>Lab AI will win this game. You can start a new one whenever you like.</DialogDescription></DialogHeader><button className="primary" onClick={() => { workerRef.current?.terminate(); setResigned(true); setConfirmResign(false); }}>Resign game</button><button className="quiet-button" onClick={() => setConfirmResign(false)}>Keep playing</button></DialogContent></Dialog>
+    <Dialog open={confirmResign} onOpenChange={setConfirmResign}><DialogContent className="chess-dialog"><DialogHeader><DialogTitle>Resign this game?</DialogTitle><DialogDescription>Sandbox AI will win this game. You can start a new one whenever you like.</DialogDescription></DialogHeader><button className="primary" onClick={() => { workerRef.current?.terminate(); setResigned(true); setConfirmResign(false); }}>Resign game</button><button className="quiet-button" onClick={() => setConfirmResign(false)}>Keep playing</button></DialogContent></Dialog>
   </main>;
 }
