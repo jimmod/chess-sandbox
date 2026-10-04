@@ -73,7 +73,7 @@ export default function Home() {
   const lastMove = history[history.length - 1].move;
   const moveList = history.slice(1);
   const thinking = !localGame && !end && pos.turn !== human && !aiError;
-  const status = pendingDuckMove ? 'Place the duck' : localGame ? (end ? (end.winner === null ? 'Game drawn' : `${end.winner === 'w' ? 'White' : 'Black'} wins!`) : `${pos.turn === 'w' ? 'White' : 'Black'}${check ? ' is in check' : ' to move'}`) : end ? (end.winner === null ? 'Game drawn' : end.winner === human ? 'You win!' : 'Sandbox AI wins') : pos.turn !== human ? (aiError ? 'AI paused' : 'Sandbox AI is thinking…') : check ? 'You’re in check' : 'Your turn';
+  const status = pendingDuckMove ? 'Place the duck' : localGame ? (end ? (end.winner === null ? 'Game drawn' : `${end.winner === 'w' ? 'White' : 'Black'} wins!`) : `${pos.turn === 'w' ? 'White' : 'Black'}${check ? ' is in check' : ' to move'}`) : end ? (end.winner === null ? 'Game drawn' : end.winner === human ? 'You win!' : 'AI wins') : pos.turn !== human ? (aiError ? 'AI paused' : 'AI is thinking…') : check ? 'You’re in check' : 'Your turn';
 
   function commitMove(m: Move) {
     const next = applyMove(pos, m, rules);
@@ -259,6 +259,6 @@ export default function Home() {
       }
     }} aria-label={`Promote to ${names[m.promotion!]}`}><PieceGlyph piece={{ color: pos.turn, kind: m.promotion! }} /><small>{names[m.promotion!]}</small></button>)}</div></DialogContent></Dialog>
     <Dialog open={confirmNew} onOpenChange={setConfirmNew}><DialogContent className="chess-dialog"><DialogHeader><DialogTitle>Start a fresh experiment?</DialogTitle><DialogDescription>This ends the current game and starts a new board with your selected rules.</DialogDescription></DialogHeader><button className="primary" onClick={startGame}>Start new game</button><button className="quiet-button" onClick={() => setConfirmNew(false)}>Keep playing</button></DialogContent></Dialog>
-    <Dialog open={confirmResign} onOpenChange={setConfirmResign}><DialogContent className="chess-dialog"><DialogHeader><DialogTitle>Resign this game?</DialogTitle><DialogDescription>{localGame ? `${pos.turn === 'w' ? 'White' : 'Black'} resigns. ${pos.turn === 'w' ? 'Black' : 'White'} wins.` : 'Sandbox AI will win this game. You can start a new one whenever you like.'}</DialogDescription></DialogHeader><button className="primary" onClick={() => { workerRef.current?.terminate(); setResigned(localGame ? pos.turn : human); setConfirmResign(false); }}>Resign game</button><button className="quiet-button" onClick={() => setConfirmResign(false)}>Keep playing</button></DialogContent></Dialog>
+    <Dialog open={confirmResign} onOpenChange={setConfirmResign}><DialogContent className="chess-dialog"><DialogHeader><DialogTitle>Resign this game?</DialogTitle><DialogDescription>{localGame ? `${pos.turn === 'w' ? 'White' : 'Black'} resigns. ${pos.turn === 'w' ? 'Black' : 'White'} wins.` : 'AI will win this game. You can start a new one whenever you like.'}</DialogDescription></DialogHeader><button className="primary" onClick={() => { workerRef.current?.terminate(); setResigned(localGame ? pos.turn : human); setConfirmResign(false); }}>Resign game</button><button className="quiet-button" onClick={() => setConfirmResign(false)}>Keep playing</button></DialogContent></Dialog>
   </main>;
 }
