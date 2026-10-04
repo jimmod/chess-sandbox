@@ -1,6 +1,6 @@
 # Chess Sandbox
 
-A customizable browser chess playground with variant-aware AI.
+A customizable browser chess playground with variant-aware AI or two humans sharing a device.
 
 ## Development
 
@@ -26,6 +26,8 @@ See [the architecture document](doc/ARCHITECTURE.md) for system boundaries, stat
 - No external AI API, paid inference, or game backend is required.
 
 Choose White, Black, or Random in **Play as**. Random chooses your side independently for each new game and orients the board for you.
+
+Choose **Human** under Meet your opponent for local two-player play. Use the header theme selector for Forest, Ocean, Violet, or Amber colors.
 
 ## Rules
 

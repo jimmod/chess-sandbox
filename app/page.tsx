@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { RotateCcw, RefreshCw, SlidersHorizontal, ChevronDown, ChevronUp, FlaskConical, Cpu, Flag, Smile, Zap, Flame, Trophy, AlertTriangle, LoaderCircle } from 'lucide-react';
+import { RotateCcw, RefreshCw, SlidersHorizontal, ChevronDown, ChevronUp, FlaskConical, Palette, Users, Flag, Smile, Zap, Flame, Trophy, AlertTriangle, LoaderCircle } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -27,6 +27,9 @@ export default function Home() {
   const [rules, setRules] = useState<Rules>({ ...CLASSIC });
   const [draft, setDraft] = useState<Rules>({ ...CLASSIC });
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
+  const [localGame, setLocalGame] = useState(false);
+  const [theme, setTheme] = useState('forest');
+  useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
   const [human, setHuman] = useState<Color>('w');
   const [draftHuman, setDraftHuman] = useState<SideChoice>('w');
   const [activeSideChoice, setActiveSideChoice] = useState<SideChoice>('w');
@@ -37,27 +40,27 @@ export default function Home() {
   const [aiError, setAiError] = useState('');
   const [retry, setRetry] = useState(0);
   const [confirmNew, setConfirmNew] = useState(false);
-  const [resigned, setResigned] = useState(false);
+  const [resigned, setResigned] = useState<Color | null>(null);
   const [confirmResign, setConfirmResign] = useState(false);
   const workerRef = useRef<Worker | null>(null);
   const pos = history[history.length - 1].position;
   const moves = useMemo(() => legalMoves(pos, rules), [pos, rules]);
   const end = useMemo(() => {
-    if (resigned) return { winner: opposite(human), reason: 'Resignation' };
+    if (resigned) return { winner: opposite(resigned), reason: 'Resignation' };
     const result = outcome(pos, rules, moves); if (result) return result;
     const key = positionKey(pos, rules);
     if (history.filter(h => positionKey(h.position, rules) === key).length >= 3) return { winner: null, reason: 'Threefold repetition' };
     return null;
   }, [pos, rules, moves, history, resigned, human]);
   const eligiblePieces = useMemo(() => new Set(moves.map(m => m.from)), [moves]);
-  const showEligiblePieces = rules.markEligiblePieces && !end && pos.turn === human;
+  const showEligiblePieces = rules.markEligiblePieces && !end && (localGame || pos.turn === human);
   const check = royal(rules) && inCheck(pos, pos.turn, rules);
   const draftPreset = PRESETS.find(p => JSON.stringify(p.rules) === JSON.stringify(draft));
   const changed = JSON.stringify(draft) !== JSON.stringify(rules) || draftHuman !== activeSideChoice;
   const lastMove = history[history.length - 1].move;
   const moveList = history.slice(1);
-  const thinking = !end && pos.turn !== human && !aiError;
-  const status = end ? (end.winner === null ? 'Game drawn' : end.winner === human ? 'You win!' : 'Sandbox AI wins') : pos.turn !== human ? (aiError ? 'AI paused' : 'Sandbox AI is thinking…') : check ? 'You’re in check' : 'Your turn';
+  const thinking = !localGame && !end && pos.turn !== human && !aiError;
+  const status = localGame ? (end ? (end.winner === null ? 'Game drawn' : `${end.winner === 'w' ? 'White' : 'Black'} wins!`) : `${pos.turn === 'w' ? 'White' : 'Black'}${check ? ' is in check' : ' to move'}`) : end ? (end.winner === null ? 'Game drawn' : end.winner === human ? 'You win!' : 'Sandbox AI wins') : pos.turn !== human ? (aiError ? 'AI paused' : 'Sandbox AI is thinking…') : check ? 'You’re in check' : 'Your turn';
 
   function commitMove(m: Move) {
     const next = applyMove(pos, m);
@@ -67,7 +70,7 @@ export default function Home() {
   const commitRef = useRef(commitMove);
   useEffect(() => { commitRef.current = commitMove; });
   useEffect(() => {
-    if (end || pos.turn === human) return;
+    if (localGame || end || pos.turn === human) return;
     let worker: Worker;
     try {
       worker = new ChessWorker();
@@ -81,24 +84,24 @@ export default function Home() {
       const timer = setTimeout(() => worker.postMessage({ position: pos, rules, difficulty }), 300);
       return () => { clearTimeout(timer); worker.terminate(); workerRef.current = null; };
     } catch { queueMicrotask(() => setAiError('This browser could not start the AI. Please try another browser.')); }
-  }, [pos, rules, difficulty, human, end, retry]);
+  }, [pos, rules, difficulty, human, end, retry, localGame]);
   function startGame() {
     const side: Color = draftHuman === 'random' ? (Math.random() < 0.5 ? 'w' : 'b') : draftHuman;
     workerRef.current?.terminate(); setRules({ ...draft }); setActiveSideChoice(draftHuman); setHuman(side); setFlipped(side === 'b');
-    setHistory([{ position: initialPosition(draft) }]); setSelected(null); setPromotion([]); setResigned(false); setAiError(''); setConfirmNew(false);
+    setHistory([{ position: initialPosition(draft) }]); setSelected(null); setPromotion([]); setResigned(null); setAiError(''); setConfirmNew(false);
   }
   function requestNew() { if (history.length > 1 && !end) setConfirmNew(true); else startGame(); }
   function clickSquare(i: number) {
-    if (end || pos.turn !== human || thinking) return;
+    if (end || (!localGame && pos.turn !== human) || thinking) return;
     const candidates = moves.filter(m => m.from === selected && m.to === i);
     if (candidates.length > 1) { setPromotion(candidates); return; }
     if (candidates.length === 1) { commitMove(candidates[0]); return; }
-    setSelected(selected === i ? null : pos.board[i]?.color === human ? i : null);
+    setSelected(selected === i ? null : pos.board[i]?.color === (localGame ? pos.turn : human) ? i : null);
   }
   function undo() {
     workerRef.current?.terminate();
-    const remove = pos.turn === human && history.length > 2 ? 2 : 1;
-    setHistory(h => h.slice(0, Math.max(1, h.length - remove))); setResigned(false); setSelected(null); setPromotion([]); setAiError('');
+    const remove = !localGame && pos.turn === human && history.length > 2 ? 2 : 1;
+    setHistory(h => h.slice(0, Math.max(1, h.length - remove))); setResigned(null); setSelected(null); setPromotion([]); setAiError('');
   }
   const liveRef = useRef({ pos, rules, moves, status });
   useEffect(() => { liveRef.current = { pos, rules, moves, status }; });
@@ -125,18 +128,18 @@ export default function Home() {
     ['superKnights', 'Super knights', 'Knights also move one square any way.'],
   ];
   return <main>
-    <header><Link className="brand" href="/" aria-label="Chess Sandbox home"><img className="brand-icon" src="/chess-sandbox-icon.png" alt="" width={44} height={44} /><span className="brand-name">Chess <span className="brand-light">Sandbox</span></span><sup>BETA</sup></Link><span className="header-note">A familiar game. Your rules.</span><span className="local-badge"><Cpu size={14} /> PLAY VS AI</span></header>
+    <header><Link className="brand" href="/" aria-label="Chess Sandbox home"><img className="brand-icon" src="/chess-sandbox-icon.png" alt="" width={44} height={44} /><span className="brand-name">Chess <span className="brand-light">Sandbox</span></span><sup>BETA</sup></Link><span className="header-note">A familiar game. Your rules.</span><div className="theme-picker"><Palette size={17} aria-hidden="true" /><Choice label="Color theme" value={theme} onChange={setTheme} options={[['forest', 'Forest'], ['ocean', 'Ocean'], ['violet', 'Violet'], ['amber', 'Amber']]} /></div></header>
     <div className="workspace">
       <section className="play-area" aria-label="Chess game">
-        <div className={`game-status ${end ? 'finished' : check && pos.turn === human ? 'warning' : thinking ? 'waiting' : 'ready'}`}>
-          <div className="status-emblem" aria-hidden="true">{end ? <Trophy /> : thinking ? <LoaderCircle className="thinking-icon" /> : check && pos.turn === human ? <AlertTriangle /> : <span>{human === 'w' ? '♙' : '♟'}</span>}</div>
+        <div className={`game-status ${end ? 'finished' : check && (localGame || pos.turn === human) ? 'warning' : thinking ? 'waiting' : 'ready'}`}>
+          <div className="status-emblem" aria-hidden="true">{end ? <Trophy /> : thinking ? <LoaderCircle className="thinking-icon" /> : check && (localGame || pos.turn === human) ? <AlertTriangle /> : <span>{(localGame ? pos.turn : human) === 'w' ? '♙' : '♟'}</span>}</div>
           <div className="status-copy" role="status" aria-live="polite" aria-atomic="true">
             <h1>{status}</h1>
-            <p>You · {human === 'w' ? 'White' : 'Black'} · {end ? end.reason : `Move ${Math.floor(pos.ply / 2) + 1}`}</p>
+            <p>{localGame ? 'Local two-player' : `You · ${human === 'w' ? 'White' : 'Black'}`} · {end ? end.reason : `Move ${Math.floor(pos.ply / 2) + 1}`}</p>
           </div>
-          <div className={`opponent-badge ${difficulty}`} title={`Sandbox AI · ${difficulty} · ${human === 'w' ? 'Black' : 'White'}`} aria-label={`Sandbox AI difficulty: ${difficulty}`}>
-            {difficulty === 'easy' ? <Smile aria-hidden="true" /> : difficulty === 'medium' ? <Zap aria-hidden="true" /> : <Flame aria-hidden="true" />}
-            <span>{difficulty}</span>
+          <div className={`opponent-badge ${difficulty}`} title={localGame ? 'Two players sharing this board' : `Sandbox AI · ${difficulty} · ${human === 'w' ? 'Black' : 'White'}`} aria-label={localGame ? 'Human opponent' : `Sandbox AI difficulty: ${difficulty}`}>
+            {localGame ? <Users aria-hidden="true" /> : difficulty === 'easy' ? <Smile aria-hidden="true" /> : difficulty === 'medium' ? <Zap aria-hidden="true" /> : <Flame aria-hidden="true" />}
+            <span>{localGame ? 'Human' : difficulty}</span>
           </div>
         </div>
         <div className="board" role="group" aria-label="Chessboard. Select a piece then a highlighted square. Arrow keys navigate squares.">
@@ -157,27 +160,27 @@ export default function Home() {
         </div>
         {showEligiblePieces && <p className="eligible-legend"><span aria-hidden="true" /> Marked pieces can move{moves.some(m => pos.board[m.to] || m.ep !== undefined) && (rules.forcedCapture || rules.goal === 'giveaway') ? ' · A capture is required' : ''}</p>}
         {aiError && <div className="error-message" role="alert">{aiError}<button onClick={() => { setAiError(''); setRetry(n => n + 1); }}>Retry AI</button></div>}
-        <div className="board-toolbar"><div><button onClick={undo} disabled={history.length <= (human === 'b' ? 2 : 1)}><RotateCcw size={15} /> Undo turn</button><button onClick={() => setFlipped(f => !f)}><RefreshCw size={15} /> Flip board</button></div><button onClick={() => setConfirmResign(true)} disabled={!!end || history.length === 1} aria-label="Resign game"><Flag size={15} /></button></div>
+        <div className="board-toolbar"><div><button onClick={undo} disabled={history.length <= (!localGame && human === 'b' ? 2 : 1)}><RotateCcw size={15} /> {localGame ? 'Undo move' : 'Undo turn'}</button><button onClick={() => setFlipped(f => !f)}><RefreshCw size={15} /> Flip board</button></div><button onClick={() => setConfirmResign(true)} disabled={!!end || history.length === 1} aria-label="Resign game"><Flag size={15} /></button></div>
         <div className="move-log"><div className="move-log-title"><h3>Move history</h3><span>{moveList.length} plies</span></div>{!moveList.length ? <p className="empty-history">Every experiment starts with a move.</p> : <div className="move-rows">{Array.from({ length: Math.ceil(moveList.length / 2) }, (_, i) => <div className="move-row" key={i}><span>{i + 1}.</span><b>{moveList[i * 2]?.label}</b><b>{moveList[i * 2 + 1]?.label ?? '…'}</b></div>)}</div>}</div>
       </section>
       <aside className="control-panel" aria-label="Game setup">
         <div className="sandbox-heading"><FlaskConical size={17} /><p className="eyebrow">YOUR GAME, REIMAGINED</p></div><h2>The rulebook is yours.</h2><p className="muted">Start with a classic. Then change the possibilities.</p>
-        <div className="preset-grid">{PRESETS.map(p => <button key={p.id} className={`preset ${draftPreset?.id === p.id ? 'active' : ''}`} aria-pressed={draftPreset?.id === p.id} onClick={() => setDraft({ ...p.rules })}><b>{p.icon}</b>{p.name}<small>{p.description}</small>{draftPreset?.id === p.id && <span className="preset-check">✓</span>}</button>)}</div>
+        <div className="preset-grid">{PRESETS.map(p => <button key={p.id} className={`preset ${draftPreset?.id === p.id ? 'active' : ''}`} aria-pressed={draftPreset?.id === p.id} onClick={() => setDraft({ ...p.rules })}><span className="preset-icon" aria-hidden="true">{p.icon}</span><span className="preset-copy"><strong>{p.name}:</strong> <span>{p.description}</span></span>{draftPreset?.id === p.id && <span className="preset-check">✓</span>}</button>)}</div>
         <div className="custom-heading"><button className="custom-toggle" onClick={() => setExpanded(x => !x)} aria-expanded={expanded}><SlidersHorizontal size={16} /><span>Customize rules</span><span className="rule-count">{Object.keys(CLASSIC).filter(k => draft[k as keyof Rules] !== CLASSIC[k as keyof Rules]).length || Object.keys(CLASSIC).length} {JSON.stringify(draft) === JSON.stringify(CLASSIC) ? 'options' : 'changed'}</span>{expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</button></div>
         {expanded && <div className="rules-editor"><label className="field-label">Win condition</label><Choice label="Win condition" value={draft.goal} onChange={v => setDraft(d => ({ ...d, goal: v as Rules['goal'], ...(v === 'giveaway' ? { forcedCapture: true, castling: false, markEligiblePieces: true } : {}) }))} options={Object.entries(goals)} /><p className="rule-hint">{draft.goal === 'hill' ? 'Reach d4, e4, d5, or e5 with your king, or checkmate.' : draft.goal === 'giveaway' ? 'Captures are mandatory. Lose all your pieces or have no legal move to win. No check or castling.' : draft.goal === 'capture' ? 'Check is ignored. Capture the opposing king to win.' : 'Protect your king. Deliver checkmate to win.'}</p>
           <label className="field-label">Random starting position</label><Choice label="Random starting position" value={draft.randomStart} onChange={v => setDraft(d => ({ ...d, randomStart: v as Rules['randomStart'], ...(v !== 'off' ? { castling: false } : {}) }))} options={[['off', 'Off'], ['except-pawns', 'Except the pawns'], ['all', 'All']]} /><p className="rule-hint">{draft.randomStart === 'all' ? 'All 16 pieces and pawns are shuffled across both starting ranks. No castling.' : draft.randomStart === 'except-pawns' ? 'Shuffle both back ranks equally. Pawns stay on their usual ranks; no castling.' : 'Standard opening arrangement for both sides.'}</p>
           {toggles.map(([key, title, hint]) => <div className="rule-row" key={key}><label htmlFor={`rule-${key}`}><strong>{title}</strong><small>{hint}</small></label><Switch id={`rule-${key}`} checked={key === 'castling' && draft.randomStart !== 'off' ? false : Boolean(draft[key])} disabled={(draft.goal === 'giveaway' && (key === 'forcedCapture' || key === 'castling')) || (draft.randomStart !== 'off' && key === 'castling')} onCheckedChange={v => setDraft(d => ({ ...d, [key]: v }))} /></div>)}
           <label className="field-label">Pawn promotion</label><Choice label="Pawn promotion" value={draft.promotion} onChange={v => setDraft(d => ({ ...d, promotion: v as Rules['promotion'] }))} options={ [['choice', 'Choose any piece'], ['q', 'Always queen'], ['n', 'Always knight']] } />
         </div>}
-        <h3>Meet your opponent</h3><RadioGroup aria-label="AI difficulty" className="difficulty-group" value={difficulty} onValueChange={v => setDifficulty(v as Difficulty)}>{(['easy', 'medium', 'hard'] as const).map((v, i) => <label key={v} className={`difficulty-choice ${difficulty === v ? 'active' : ''}`}><RadioGroupItem className="sr-only" value={v} /><span className="level-bars" aria-hidden="true">{[0,1,2].map(n => <i key={n} className={n <= i ? 'lit' : ''} />)}</span>{v[0].toUpperCase() + v.slice(1)}</label>)}</RadioGroup><p className="level-description">{levelCopy[difficulty]}</p>
-        <div className="side-choice"><label className="field-label">Play as</label><Choice label="Play as" value={draftHuman} onChange={v => setDraftHuman(v as SideChoice)} options={ [['w', 'White'], ['b', 'Black'], ['random', 'Random']] } /></div>
+        <h3>Meet your opponent</h3><RadioGroup aria-label="Opponent" className="difficulty-group" value={localGame ? 'human' : difficulty} onValueChange={v => { workerRef.current?.terminate(); setLocalGame(v === 'human'); if (v !== 'human') setDifficulty(v as Difficulty); setSelected(null); setPromotion([]); setAiError(''); }}>{(['easy', 'medium', 'hard', 'human'] as const).map((v, i) => <label key={v} className={`difficulty-choice ${(localGame ? 'human' : difficulty) === v ? 'active' : ''}`}><RadioGroupItem className="sr-only" value={v} /><span className="level-bars" aria-hidden="true">{v === 'human' ? <Users size={13} /> : [0,1,2].map(n => <i key={n} className={n <= i ? 'lit' : ''} />)}</span>{v[0].toUpperCase() + v.slice(1)}</label>)}</RadioGroup><p className="level-description">{localGame ? 'Two players, one board. Take turns on this device.' : levelCopy[difficulty]}</p>
+        {!localGame && <div className="side-choice"><label className="field-label">Play as</label><Choice label="Play as" value={draftHuman} onChange={v => setDraftHuman(v as SideChoice)} options={ [['w', 'White'], ['b', 'Black'], ['random', 'Random']] } /></div>}
         <button className="primary" onClick={requestNew}><span>♟</span>{changed ? 'Apply rules & start game' : 'New game'}</button><p className="setup-note">{changed ? 'Your changes take effect in a new game.' : 'New board. Fresh possibilities.'}</p>
         <div className="active-rules"><span>ON THIS BOARD</span><p>{goals[rules.goal]}{rules.randomStart !== 'off' ? ` · Random start (${rules.randomStart === 'all' ? 'all pieces' : 'except pawns'}) · No castling` : ''}{rules.forcedCapture && rules.goal !== 'giveaway' ? ' · Forced captures' : ''}{rules.superKnights ? ' · Super knights' : ''}{rules.backwardCapture ? ' · Backward captures' : ''}</p></div>
       </aside>
     </div>
-    <footer><span>CHESS SANDBOX / EXPERIMENT. PLAY. REPEAT.</span><span>Your rules. Same rules for the AI.</span></footer>
-    <Dialog open={promotion.length > 0} onOpenChange={open => { if (!open) setPromotion([]); }}><DialogContent className="chess-dialog"><DialogHeader><DialogTitle>Choose your promotion</DialogTitle><DialogDescription>Your pawn has reached the last rank.</DialogDescription></DialogHeader><div className="promotion-choices">{promotion.map(m => <button key={m.promotion} onClick={() => commitMove(m)} aria-label={`Promote to ${names[m.promotion!]}`}><PieceGlyph piece={{ color: human, kind: m.promotion! }} /><small>{names[m.promotion!]}</small></button>)}</div></DialogContent></Dialog>
+    <footer><span>CHESS SANDBOX / EXPERIMENT. PLAY. REPEAT.</span><span>{localGame ? 'Your rules. Shared board.' : 'Your rules. Same rules for the AI.'}</span></footer>
+    <Dialog open={promotion.length > 0} onOpenChange={open => { if (!open) setPromotion([]); }}><DialogContent className="chess-dialog"><DialogHeader><DialogTitle>Choose your promotion</DialogTitle><DialogDescription>Your pawn has reached the last rank.</DialogDescription></DialogHeader><div className="promotion-choices">{promotion.map(m => <button key={m.promotion} onClick={() => commitMove(m)} aria-label={`Promote to ${names[m.promotion!]}`}><PieceGlyph piece={{ color: pos.turn, kind: m.promotion! }} /><small>{names[m.promotion!]}</small></button>)}</div></DialogContent></Dialog>
     <Dialog open={confirmNew} onOpenChange={setConfirmNew}><DialogContent className="chess-dialog"><DialogHeader><DialogTitle>Start a fresh experiment?</DialogTitle><DialogDescription>This ends the current game and starts a new board with your selected rules.</DialogDescription></DialogHeader><button className="primary" onClick={startGame}>Start new game</button><button className="quiet-button" onClick={() => setConfirmNew(false)}>Keep playing</button></DialogContent></Dialog>
-    <Dialog open={confirmResign} onOpenChange={setConfirmResign}><DialogContent className="chess-dialog"><DialogHeader><DialogTitle>Resign this game?</DialogTitle><DialogDescription>Sandbox AI will win this game. You can start a new one whenever you like.</DialogDescription></DialogHeader><button className="primary" onClick={() => { workerRef.current?.terminate(); setResigned(true); setConfirmResign(false); }}>Resign game</button><button className="quiet-button" onClick={() => setConfirmResign(false)}>Keep playing</button></DialogContent></Dialog>
+    <Dialog open={confirmResign} onOpenChange={setConfirmResign}><DialogContent className="chess-dialog"><DialogHeader><DialogTitle>Resign this game?</DialogTitle><DialogDescription>{localGame ? `${pos.turn === 'w' ? 'White' : 'Black'} resigns. ${pos.turn === 'w' ? 'Black' : 'White'} wins.` : 'Sandbox AI will win this game. You can start a new one whenever you like.'}</DialogDescription></DialogHeader><button className="primary" onClick={() => { workerRef.current?.terminate(); setResigned(localGame ? pos.turn : human); setConfirmResign(false); }}>Resign game</button><button className="quiet-button" onClick={() => setConfirmResign(false)}>Keep playing</button></DialogContent></Dialog>
   </main>;
 }

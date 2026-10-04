@@ -6,7 +6,7 @@ This document describes the implemented system. Update it in the same commit as 
 
 Chess Sandbox is a single-page chess game against a local AI, with customizable rules. Both human move validation and AI search must use the same engine and active rule configuration. Game execution requires no remote inference service, API key, or paid AI calls.
 
-The current product has no multiplayer service, clocks, board editor, database-backed games, or browser persistence. Reloading starts a fresh game. The main route is `/`.
+The current product supports local two-player games, but has no online multiplayer service, clocks, board editor, database-backed games, or browser persistence. Reloading starts a fresh game. The main route is `/`.
 
 ## System boundaries
 
@@ -121,3 +121,9 @@ The UI derives eligible source squares directly from the shared engine's `legalM
 ## Random player side
 
 The Play as selector accepts White, Black, or Random. `draftHuman` and `activeSideChoice` retain the selected preference separately from the resolved `human` color. Starting a game samples Random with equal probability for each color, updates the active preference, and orients the board for that color. Black starts trigger the normal AI opening turn. The preference remains Random for subsequent games, and does not incorrectly appear as an unapplied change after resolution. Changing the selector mid-game only stages the next game; flipping and undo do not reroll the side.
+
+## Local opponent and themes
+
+Meet your opponent offers Easy, Medium, Hard, and Human. Human switches the active board into local two-player mode, cancels AI search, and allows the side to move to select pieces. No network session is created. Status names White/Black, eligibility markers follow the active side, promotion uses the moving color, resignation records the resigning color, and undo removes one ply. Board orientation stays fixed until explicitly flipped; Play as is hidden in this mode. Switching back to an AI level resumes AI play using the previously selected human color. Mode changes clear pending selection and promotion without discarding history.
+
+The header Color theme selector offers Forest, Ocean, Violet, and Amber. A React preference sets `data-theme` on the document root. CSS palette tokens recolor board squares, surfaces, accents, text tints, controls, and portaled dialogs together. Error/warning colors and the product icon retain their identity. Theme selection is session-only and does not affect game state or move legality. Preset buttons use compact icon/name/description rows.
