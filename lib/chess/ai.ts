@@ -29,7 +29,10 @@ export function chooseMove(pos: Position, rules: Rules, difficulty: Difficulty, 
   function ordered(p: Position, ms: Move[]) {
     return ms.slice().sort((a, b) => priority(p, b) - priority(p, a));
   }
-  function priority(p: Position, m: Move) { return (p.board[m.to] ? values[p.board[m.to]!.kind] * 10 - values[p.board[m.from]!.kind] : 0) + (m.promotion ? values[m.promotion] : 0); }
+  function priority(p: Position, m: Move) {
+    const target = p.board[m.to] || (m.ep !== undefined ? p.board[m.ep] : null);
+    return (target ? values[target.kind] * 10 - values[p.board[m.from]!.kind] : 0) + (m.promotion ? values[m.promotion] : 0);
+  }
   function search(p: Position, depth: number, alpha: number, beta: number, ply: number): number {
     if ((++nodes & 127) === 0 && Date.now() >= deadline) throw new Error('timeout');
     const ms = legalMoves(p, rules), end = outcome(p, rules, ms);
