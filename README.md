@@ -44,3 +44,7 @@ The optional browser WebMCP `read_chess_game` tool exposes current public board 
 ## Verification
 
 Engine tests include opening perft 20/400/8902, Fool's mate, en passant, castling through attack, promotion, pinned pieces, giveaway, hill, and modified movement. Browser checks cover human/AI turns, undo, rule activation, and valid/invalid WebMCP reads.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE). Third-party dependencies and vendored code retain their respective licenses and notices.
