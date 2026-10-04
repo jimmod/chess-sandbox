@@ -70,15 +70,7 @@ export function chooseMove(pos: Position, rules: Rules, difficulty: Difficulty, 
   }
 
   const moves = getDuckMoves(pos, true);
-  if (difficulty === 'easy' && random() < .35) {
-    const m = moves[Math.floor(random() * moves.length)];
-    if (rules.duckChess && m.duck === undefined) {
-      const after = applyMove(pos, m, rules);
-      const sqs = legalDuckSquares(pos, after.board);
-      return sqs.length ? { ...m, duck: sqs[Math.floor(random() * sqs.length)] } : m;
-    }
-    return m;
-  }
+
   const deadline = Date.now() + ({ easy: 120, medium: 500, hard: 1600 }[difficulty]);
   const maxDepth = { easy: 1, medium: 3, hard: 5 }[difficulty];
   let nodes = 0;
@@ -111,17 +103,39 @@ export function chooseMove(pos: Position, rules: Rules, difficulty: Difficulty, 
     return bestScore;
   }
   let best = moves[0];
+  let moveScores: { move: Move; score: number }[] = moves.map(m => ({ move: m, score: 0 }));
   for (let depth = 1; depth <= maxDepth; depth++) {
     let iterationBest = best, score = -Infinity;
+    const depthScores: { move: Move; score: number }[] = [];
     try {
       const sorted = ordered(pos, moves); sorted.sort((a, b) => Number(b === best) - Number(a === best));
       for (const m of sorted) {
-        const value = -search(applyMove(pos, m, rules), depth - 1, -Infinity, -score, 1) + (difficulty === 'easy' ? random() * 90 : 0);
+        const value = -search(applyMove(pos, m, rules), depth - 1, -Infinity, -score, 1);
+        depthScores.push({ move: m, score: value });
         if (value > score) { score = value; iterationBest = m; }
       }
       best = iterationBest;
+      moveScores = depthScores;
     } catch { break; }
     if (Date.now() >= deadline) break;
+  }
+
+  // Softmax temperature-based selection for move variety
+  const temp = { easy: 200, medium: 40, hard: 12 }[difficulty];
+  const margin = { easy: Infinity, medium: 200, hard: 80 }[difficulty];
+  const topScore = Math.max(...moveScores.map(s => s.score));
+  const candidates = moveScores.filter(s => s.score >= topScore - margin);
+  if (candidates.length > 1) {
+    const maxS = Math.max(...candidates.map(c => c.score));
+    const weights = candidates.map(c => Math.exp((c.score - maxS) / temp));
+    const totalWeight = weights.reduce((a, b) => a + b, 0);
+    let r = random() * totalWeight;
+    for (let i = 0; i < candidates.length; i++) {
+      r -= weights[i];
+      if (r <= 0) { best = candidates[i].move; break; }
+    }
+  } else if (candidates.length === 1) {
+    best = candidates[0].move;
   }
   if (rules.duckChess && best.duck === undefined) {
     const after = applyMove(pos, best, rules);
