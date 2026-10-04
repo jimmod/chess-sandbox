@@ -13,3 +13,26 @@ test('promotion offers four choices or the custom forced piece', () => { const p
 test('giveaway requires captures and treats the king as an ordinary piece', () => {const p=bare();p.board[60]={color:'w',kind:'k'};p.board[52]={color:'b',kind:'r'};const r=PRESETS[2].rules; assert.equal(legalMoves(p,r).length,1);assert.equal(legalMoves(p,r)[0].to,52);const next=applyMove(p,legalMoves(p,r)[0]);assert.equal(outcome(next,r)?.winner,'b');});
 test('hill, capture, pawn and knight variants change the actual rules',()=>{const p=bare();p.board[35]={color:'w',kind:'k'};p.board[4]={color:'b',kind:'k'};assert.equal(outcome(p,{...CLASSIC,goal:'hill'})?.winner,'w');p.board[4]=null;assert.equal(outcome(p,{...CLASSIC,goal:'capture'})?.winner,'w');assert.equal(legalMoves(initialPosition(),{...CLASSIC,doubleStep:false}).length,12);const n=bare();n.board[27]={color:'w',kind:'n'};assert.equal(legalMoves(n,{...CLASSIC,goal:'capture',superKnights:true}).length,16);n.board[27]={color:'w',kind:'p'};n.board[36]={color:'b',kind:'r'};assert.ok(legalMoves(n,{...CLASSIC,goal:'capture',backwardCapture:true}).some(m=>m.to===36));});
 test('a pinned piece cannot expose its king',()=>{const p=bare();p.board[60]={color:'w',kind:'k'};p.board[52]={color:'w',kind:'r'};p.board[4]={color:'b',kind:'r'};p.board[0]={color:'b',kind:'k'};assert.ok(!inCheck(p,'w',CLASSIC));assert.ok(legalMoves(p,CLASSIC).filter(m=>m.from===52).every(m=>m.to%8===4));});
+test('random starts preserve armies, mirror sides, shield kings, and disable castling', () => {
+  let seed = 42;
+  const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+  const seen = new Set<string>();
+  for (let i = 0; i < 100; i++) {
+    const rules = { ...CLASSIC, randomStart: true };
+    const p = initialPosition(rules, random);
+    const top = p.board.slice(0,8).map(p => p!.kind);
+    seen.add(top.join(''));
+    assert.deepEqual(top.slice().sort(), ['r','n','b','q','k','b','n','r'].sort());
+    assert.deepEqual(p.board.slice(56).map(p => p!.kind), top);
+    assert.notEqual(top.join(''), 'rnbqkbnr');
+    assert.ok(p.board.slice(8,16).every(p => p?.kind === 'p' && p.color === 'b'));
+    assert.ok(p.board.slice(48,56).every(p => p?.kind === 'p' && p.color === 'w'));
+    assert.equal(p.rights, '');
+    assert.equal(inCheck(p, 'w', rules), false);
+    assert.equal(inCheck(p, 'b', rules), false);
+    assert.ok(legalMoves(p,rules).length > 0);
+    assert.equal(outcome(p,rules), null);
+  }
+  assert.ok(seen.size > 50);
+  assert.equal(initialPosition(CLASSIC).rights, 'KQkq');
+});

@@ -3,6 +3,7 @@ export type Kind = 'p' | 'n' | 'b' | 'r' | 'q' | 'k';
 export type Piece = { color: Color; kind: Kind };
 export type Rules = {
   goal: 'checkmate' | 'capture' | 'hill' | 'giveaway';
+  randomStart: boolean;
   forcedCapture: boolean;
   castling: boolean;
   enPassant: boolean;
@@ -13,7 +14,7 @@ export type Rules = {
 };
 export type Move = { from: number; to: number; promotion?: Kind; ep?: number; rook?: [number, number] };
 export type Position = { board: (Piece | null)[]; turn: Color; rights: string; ep: number | null; halfmove: number; ply: number };
-export const CLASSIC: Rules = { goal: 'checkmate', forcedCapture: false, castling: true, enPassant: true, doubleStep: true, backwardCapture: false, superKnights: false, promotion: 'choice' };
+export const CLASSIC: Rules = { goal: 'checkmate', randomStart: false, forcedCapture: false, castling: true, enPassant: true, doubleStep: true, backwardCapture: false, superKnights: false, promotion: 'choice' };
 export const PRESETS: { id: string; name: string; description: string; icon: string; rules: Rules }[] = [
   { id: 'classic', name: 'Classic', description: 'The original game', icon: '♔', rules: { ...CLASSIC } },
   { id: 'hill', name: 'King of the Hill', description: 'Race to the center', icon: '⚑', rules: { ...CLASSIC, goal: 'hill' } },
@@ -23,9 +24,18 @@ export const PRESETS: { id: string; name: string; description: string; icon: str
 export const opposite = (c: Color): Color => c === 'w' ? 'b' : 'w';
 export const squareName = (i: number) => 'abcdefgh'[i % 8] + (8 - Math.floor(i / 8));
 export const squareIndex = (s: string) => /^[a-h][1-8]$/.test(s) ? (8 - Number(s[1])) * 8 + 'abcdefgh'.indexOf(s[0]) : -1;
-export function initialPosition(): Position {
+export function initialPosition(rules: Rules = CLASSIC, random: () => number = Math.random): Position {
   const order: Kind[] = ['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'];
-  return { board: Array.from({ length: 64 }, (_, i) => i < 8 ? { color: 'b', kind: order[i] } : i < 16 ? { color: 'b', kind: 'p' } : i < 48 ? null : i < 56 ? { color: 'w', kind: 'p' } : { color: 'w', kind: order[i - 56] }), turn: 'w', rights: 'KQkq', ep: null, halfmove: 0, ply: 0 };
+  if (rules.randomStart) {
+    // Keep pawns shielding both kings; mirror the same shuffled army for fairness.
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    // Never present the classic arrangement as a randomized opening.
+    if (order.join('') === 'rnbqkbnr') [order[1], order[2]] = [order[2], order[1]];
+  }
+  return { board: Array.from({ length: 64 }, (_, i) => i < 8 ? { color: 'b', kind: order[i] } : i < 16 ? { color: 'b', kind: 'p' } : i < 48 ? null : i < 56 ? { color: 'w', kind: 'p' } : { color: 'w', kind: order[i - 56] }), turn: 'w', rights: rules.randomStart ? '' : 'KQkq', ep: null, halfmove: 0, ply: 0 };
 }
 const diagonals = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
 const straight = [[0, 1], [0, -1], [1, 0], [-1, 0]];

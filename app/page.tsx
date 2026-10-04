@@ -81,7 +81,7 @@ export default function Home() {
   }, [pos, rules, difficulty, human, end, retry]);
   function startGame() {
     workerRef.current?.terminate(); setRules({ ...draft }); setHuman(draftHuman); setFlipped(draftHuman === 'b');
-    setHistory([{ position: initialPosition() }]); setSelected(null); setPromotion([]); setResigned(false); setAiError(''); setConfirmNew(false);
+    setHistory([{ position: initialPosition(draft) }]); setSelected(null); setPromotion([]); setResigned(false); setAiError(''); setConfirmNew(false);
   }
   function requestNew() { if (history.length > 1 && !end) setConfirmNew(true); else startGame(); }
   function clickSquare(i: number) {
@@ -111,6 +111,7 @@ export default function Home() {
   }, []);
 
   const toggles: [keyof Rules, string, string][] = [
+    ['randomStart', 'Random starting position', 'Shuffle both back ranks equally. Pawns stay; no castling.'],
     ['forcedCapture', 'Forced captures', 'If a capture is available, take it.'],
     ['castling', 'Castling', 'Let king and rook move together.'],
     ['enPassant', 'En passant', 'Capture a pawn as it passes.'],
@@ -147,15 +148,15 @@ export default function Home() {
       <aside className="control-panel" aria-label="Game setup">
         <div className="sandbox-heading"><FlaskConical size={17} /><p className="eyebrow">YOUR GAME, REIMAGINED</p></div><h2>The rulebook is yours.</h2><p className="muted">Start with a classic. Then change the possibilities.</p>
         <div className="preset-grid">{PRESETS.map(p => <button key={p.id} className={`preset ${draftPreset?.id === p.id ? 'active' : ''}`} aria-pressed={draftPreset?.id === p.id} onClick={() => setDraft({ ...p.rules })}><b>{p.icon}</b>{p.name}<small>{p.description}</small>{draftPreset?.id === p.id && <span className="preset-check">✓</span>}</button>)}</div>
-        <div className="custom-heading"><button className="custom-toggle" onClick={() => setExpanded(x => !x)} aria-expanded={expanded}><SlidersHorizontal size={16} /><span>Customize rules</span><span className="rule-count">{Object.keys(CLASSIC).filter(k => draft[k as keyof Rules] !== CLASSIC[k as keyof Rules]).length || '8'} {JSON.stringify(draft) === JSON.stringify(CLASSIC) ? 'options' : 'changed'}</span>{expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</button></div>
+        <div className="custom-heading"><button className="custom-toggle" onClick={() => setExpanded(x => !x)} aria-expanded={expanded}><SlidersHorizontal size={16} /><span>Customize rules</span><span className="rule-count">{Object.keys(CLASSIC).filter(k => draft[k as keyof Rules] !== CLASSIC[k as keyof Rules]).length || Object.keys(CLASSIC).length} {JSON.stringify(draft) === JSON.stringify(CLASSIC) ? 'options' : 'changed'}</span>{expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</button></div>
         {expanded && <div className="rules-editor"><label className="field-label">Win condition</label><Choice label="Win condition" value={draft.goal} onChange={v => setDraft(d => ({ ...d, goal: v as Rules['goal'], ...(v === 'giveaway' ? { forcedCapture: true, castling: false } : {}) }))} options={Object.entries(goals)} /><p className="rule-hint">{draft.goal === 'hill' ? 'Reach d4, e4, d5, or e5 with your king, or checkmate.' : draft.goal === 'giveaway' ? 'Captures are mandatory. Lose all your pieces or have no legal move to win. No check or castling.' : draft.goal === 'capture' ? 'Check is ignored. Capture the opposing king to win.' : 'Protect your king. Deliver checkmate to win.'}</p>
-          {toggles.map(([key, title, hint]) => <div className="rule-row" key={key}><label htmlFor={`rule-${key}`}><strong>{title}</strong><small>{hint}</small></label><Switch id={`rule-${key}`} checked={Boolean(draft[key])} disabled={draft.goal === 'giveaway' && (key === 'forcedCapture' || key === 'castling')} onCheckedChange={v => setDraft(d => ({ ...d, [key]: v }))} /></div>)}
+          {toggles.map(([key, title, hint]) => <div className="rule-row" key={key}><label htmlFor={`rule-${key}`}><strong>{title}</strong><small>{hint}</small></label><Switch id={`rule-${key}`} checked={key === 'castling' && draft.randomStart ? false : Boolean(draft[key])} disabled={(draft.goal === 'giveaway' && (key === 'forcedCapture' || key === 'castling')) || (draft.randomStart && key === 'castling')} onCheckedChange={v => setDraft(d => ({ ...d, [key]: v }))} /></div>)}
           <label className="field-label">Pawn promotion</label><Choice label="Pawn promotion" value={draft.promotion} onChange={v => setDraft(d => ({ ...d, promotion: v as Rules['promotion'] }))} options={ [['choice', 'Choose any piece'], ['q', 'Always queen'], ['n', 'Always knight']] } />
         </div>}
         <h3>Meet your opponent</h3><RadioGroup aria-label="AI difficulty" className="difficulty-group" value={difficulty} onValueChange={v => setDifficulty(v as Difficulty)}>{(['easy', 'medium', 'hard'] as const).map((v, i) => <label key={v} className={`difficulty-choice ${difficulty === v ? 'active' : ''}`}><RadioGroupItem className="sr-only" value={v} /><span className="level-bars" aria-hidden="true">{[0,1,2].map(n => <i key={n} className={n <= i ? 'lit' : ''} />)}</span>{v[0].toUpperCase() + v.slice(1)}</label>)}</RadioGroup><p className="level-description">{levelCopy[difficulty]}</p>
         <div className="side-choice"><label className="field-label">Play as</label><Choice label="Play as" value={draftHuman} onChange={v => setDraftHuman(v as Color)} options={ [['w', 'White'], ['b', 'Black']] } /></div>
         <button className="primary" onClick={requestNew}><span>♟</span>{changed ? 'Apply rules & start game' : 'New game'}</button><p className="setup-note">{changed ? 'Your changes take effect in a new game.' : 'New board. Fresh possibilities.'}</p>
-        <div className="active-rules"><span>ON THIS BOARD</span><p>{goals[rules.goal]}{rules.forcedCapture && rules.goal !== 'giveaway' ? ' · Forced captures' : ''}{rules.superKnights ? ' · Super knights' : ''}{rules.backwardCapture ? ' · Backward captures' : ''}</p></div>
+        <div className="active-rules"><span>ON THIS BOARD</span><p>{goals[rules.goal]}{rules.randomStart ? ' · Random start · No castling' : ''}{rules.forcedCapture && rules.goal !== 'giveaway' ? ' · Forced captures' : ''}{rules.superKnights ? ' · Super knights' : ''}{rules.backwardCapture ? ' · Backward captures' : ''}</p></div>
       </aside>
     </div>
     <footer><span>CHESS SANDBOX / EXPERIMENT. PLAY. REPEAT.</span><span>Your rules. Same rules for the AI.</span></footer>

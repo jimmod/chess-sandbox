@@ -49,7 +49,7 @@ The Cloudflare Worker serves the application; it does not play the game. The bro
 
 `Move` contains source and destination indexes, with optional promotion kind, en passant victim index, and rook relocation for castling. `applyMove` returns a new position and board array. Callers must supply a legal move; move application itself is not a validation boundary.
 
-`Rules` contains eight options: victory condition, forced captures, castling, en passant, pawn double step, backward pawn captures, super knights, and promotion policy. Presets are Classic, King of the Hill, Giveaway, and Wild Knights.
+`Rules` contains nine options: victory condition, forced captures, castling, en passant, pawn double step, backward pawn captures, super knights, promotion policy, and random starting position. Presets are Classic, King of the Hill, Giveaway, and Wild Knights.
 
 The engine generates pseudo-legal moves, filters king exposure for royal variants, then enforces mandatory captures. Giveaway always requires available captures, disables castling, and treats kings as ordinary pieces. Capture-the-king ignores check. Hill wins by reaching d4/e4/d5/e5 with a king or by checkmate. Super knights retain knight jumps and gain adjacent steps; backward pawn captures do not permit backward non-capturing moves.
 
@@ -99,3 +99,9 @@ Run `npm run typecheck`, `npm test`, and `npm run build` for changes affecting e
 For UI or worker changes, verify a human move plus AI reply, undo, rule activation, and narrow-screen layout in the browser. For rule changes, add a focused position test and verify both human and AI use the rule. For branding changes, check visible header, metadata, icon, package metadata, and README.
 
 Keep this document about the shipped architecture. Update README links and relevant limitations when capabilities change. Do not commit generated build output, TypeScript caches, local credentials, or environment files.
+
+## Randomized starting positions
+
+`initialPosition(rules, random)` accepts the active rules and an injectable random source for reproducible tests. With `randomStart` enabled, Fisher–Yates shuffles the eight back-rank pieces once and mirrors the order for both colors. Pawns stay on their usual ranks, shielding kings. A classic-order result swaps two pieces so the opening visibly differs. This is a back-rank shuffle, not Chess960: bishops need not occupy opposite square colors. Castling rights are empty throughout these games regardless of the stored castling preference, and the setup UI disables the castling switch while random start is selected.
+
+Randomness runs only when starting a game, never during rendering or AI search. History retains the generated position so undo restores that same opening. Each new game samples a fresh arrangement; repeats are possible. Standard initial positions and preset defaults are unchanged.
