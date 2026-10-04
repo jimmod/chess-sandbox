@@ -48,3 +48,10 @@
 .theme-picker{display:flex;align-items:center;gap:7px;color:var(--foreground)}
 .theme-picker .choice-select{width:112px}
 @media(max-width:450px){header{padding:0 14px}.theme-picker{gap:4px}.theme-picker>svg{display:none}.theme-picker .choice-select{width:92px}.brand{font-size:18px}.brand .brand-icon{width:30px;height:30px}}
+
+.player-matchup{display:flex;align-items:center;flex-shrink:0;gap:6px}
+.matchup-entry{display:flex;align-items:center;gap:6px}.matchup-vs{font-size:.75rem;color:var(--muted-foreground)}
+.matchup-player{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 7px;min-width:48px;border:1px solid var(--border);border-radius:8px;background:var(--background);color:var(--foreground)}
+.matchup-player.active-player{border-color:var(--primary)}.matchup-player svg{width:21px;height:21px}
+.matchup-side{font-size:.625rem;text-transform:uppercase;letter-spacing:.5px;color:var(--muted-foreground)}.matchup-label{font-size:.75rem}
+@media(max-width:450px){.game-status>.status-emblem{display:none}.game-status{gap:8px}.player-matchup,.matchup-entry{gap:4px}.matchup-player{min-width:43px;padding:7px 4px}.status-copy h1{font-size:1.375rem}}

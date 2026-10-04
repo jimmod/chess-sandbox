@@ -137,9 +137,20 @@ export default function Home() {
             <h1>{status}</h1>
             <p>{localGame ? 'Local two-player' : `You · ${human === 'w' ? 'White' : 'Black'}`} · {end ? end.reason : `Move ${Math.floor(pos.ply / 2) + 1}`}</p>
           </div>
-          <div className={`opponent-badge ${difficulty}`} title={localGame ? 'Two players sharing this board' : `Sandbox AI · ${difficulty} · ${human === 'w' ? 'Black' : 'White'}`} aria-label={localGame ? 'Human opponent' : `Sandbox AI difficulty: ${difficulty}`}>
-            {localGame ? <Users aria-hidden="true" /> : difficulty === 'easy' ? <Smile aria-hidden="true" /> : difficulty === 'medium' ? <Zap aria-hidden="true" /> : <Flame aria-hidden="true" />}
-            <span>{localGame ? 'Human' : difficulty}</span>
+          <div className="player-matchup" aria-label="White versus Black">
+            {(['w', 'b'] as const).map((color, index) => {
+              const isHuman = localGame || human === color;
+              const label = isHuman ? 'Human' : difficulty[0].toUpperCase() + difficulty.slice(1);
+              const side = color === 'w' ? 'White' : 'Black';
+              return <div className="matchup-entry" key={color}>
+                {index === 1 && <span className="matchup-vs" aria-hidden="true">vs</span>}
+                <div className={`matchup-player ${color === 'w' ? 'white-player' : 'black-player'} ${!end && pos.turn === color ? 'active-player' : ''}`} aria-label={`${side}: ${isHuman ? 'Human' : `${label} AI`}${!end && pos.turn === color ? ', to move' : ''}`} title={`${side}: ${isHuman ? 'Human' : `${label} AI`}`}>
+                  <span className="matchup-side">{side}</span>
+                  {isHuman ? <Users aria-hidden="true" /> : difficulty === 'easy' ? <Smile aria-hidden="true" /> : difficulty === 'medium' ? <Zap aria-hidden="true" /> : <Flame aria-hidden="true" />}
+                  <span className="matchup-label">{label}</span>
+                </div>
+              </div>;
+            })}
           </div>
         </div>
         <div className="board" role="group" aria-label="Chessboard. Select a piece then a highlighted square. Arrow keys navigate squares.">
