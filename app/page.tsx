@@ -20,7 +20,40 @@ const levelCopy = { easy: 'A relaxed opponent. Room to experiment.', medium: 'Lo
 const goals = { checkmate: 'Checkmate the king', capture: 'Capture the king', hill: 'King to the center', giveaway: 'Give away all pieces', annihilation: 'Total annihilation (all pieces)' };
 type SideChoice = Color | 'random';
 type Snapshot = { position: Position; move?: Move; label?: string };
-function PieceGlyph({ piece }: { piece: Piece }) { return <span aria-hidden="true" className={piece.color === 'w' ? 'white-piece' : 'black-piece'}>{glyphs[piece.color][piece.kind]}</span>; }
+function PieceGlyph({ piece, className, style }: { piece: Piece; className?: string; style?: React.CSSProperties }) {
+  return <span aria-hidden="true" className={`${piece.color === 'w' ? 'white-piece' : 'black-piece'}${className ? ` ${className}` : ''}`} style={style}>{glyphs[piece.color][piece.kind]}</span>;
+}
+
+interface MoveAnim {
+  id: number;
+  from: number;
+  to: number;
+  drop?: boolean;
+  castlingRook?: { from: number; to: number };
+}
+
+interface ShatterAnim {
+  id: number;
+  square: number;
+  piece: Piece;
+}
+
+interface DuckAnim {
+  id: number;
+  from: number;
+  to: number;
+}
+
+function getDisplacement(fromSq: number, toSq: number, flipped: boolean) {
+  const fromCol = flipped ? 7 - (fromSq % 8) : fromSq % 8;
+  const fromRow = flipped ? 7 - Math.floor(fromSq / 8) : Math.floor(fromSq / 8);
+  const toCol = flipped ? 7 - (toSq % 8) : toSq % 8;
+  const toRow = flipped ? 7 - Math.floor(toSq / 8) : Math.floor(toSq / 8);
+  return {
+    dx: (fromCol - toCol) * 100,
+    dy: (fromRow - toRow) * 100,
+  };
+}
 function Choice({ value, onChange, options, label }: { value: string; onChange: (s: string) => void; options: [string, string][]; label: string }) {
   return <Select value={value} onValueChange={onChange}><SelectTrigger className="choice-select" aria-label={label}><SelectValue /></SelectTrigger><SelectContent>{options.map(([v, title]) => <SelectItem value={v} key={v}>{title}</SelectItem>)}</SelectContent></Select>;
 }
@@ -47,6 +80,56 @@ export default function Home() {
   const [confirmNew, setConfirmNew] = useState(false);
   const [resigned, setResigned] = useState<Color | null>(null);
   const [confirmResign, setConfirmResign] = useState(false);
+  const animSeq = useRef(0);
+  const [moveAnim, setMoveAnim] = useState<MoveAnim | null>(null);
+  const [shatterAnim, setShatterAnim] = useState<ShatterAnim | null>(null);
+  const [duckAnim, setDuckAnim] = useState<DuckAnim | null>(null);
+
+  function triggerMoveAnimation(m: Move, sourcePos: Position) {
+    const id = ++animSeq.current;
+    if (m.from !== undefined) {
+      let castlingRook: { from: number; to: number } | undefined;
+      if (m.rook) {
+        castlingRook = { from: m.rook[0], to: m.rook[1] };
+      }
+      setMoveAnim({ id, from: m.from, to: m.to, castlingRook });
+    } else if (m.drop) {
+      setMoveAnim({ id, from: m.to, to: m.to, drop: true });
+    }
+
+    const epSquare = m.ep !== undefined ? m.ep : null;
+    const capturedSq = epSquare ?? (sourcePos.board[m.to] ? m.to : null);
+    const capturedPiece = capturedSq !== null ? sourcePos.board[capturedSq] : null;
+
+    if (capturedPiece && capturedSq !== null) {
+      setShatterAnim({ id, square: capturedSq, piece: capturedPiece });
+    }
+
+    if (m.duck !== undefined && typeof sourcePos.duck === 'number' && sourcePos.duck !== m.duck) {
+      setDuckAnim({ id, from: sourcePos.duck, to: m.duck });
+    }
+
+    setTimeout(() => {
+      if (animSeq.current === id) setMoveAnim(null);
+    }, 180);
+
+    setTimeout(() => {
+      if (animSeq.current === id) setShatterAnim(null);
+    }, 350);
+
+    setTimeout(() => {
+      if (animSeq.current === id) setDuckAnim(null);
+    }, 180);
+  }
+
+  function triggerDuckAnimation(fromSq: number, toSq: number) {
+    const id = ++animSeq.current;
+    setDuckAnim({ id, from: fromSq, to: toSq });
+    setTimeout(() => {
+      if (animSeq.current === id) setDuckAnim(null);
+    }, 180);
+  }
+
   const workerRef = useRef<Worker | null>(null);
   const pos = history[history.length - 1].position;
   const displayPos = useMemo(() => {
@@ -76,6 +159,7 @@ export default function Home() {
   const status = pendingDuckMove ? 'Place the duck' : localGame ? (end ? (end.winner === null ? 'Game drawn' : `${end.winner === 'w' ? 'White' : 'Black'} wins!`) : `${pos.turn === 'w' ? 'White' : 'Black'}${check ? ' is in check' : ' to move'}`) : end ? (end.winner === null ? 'Game drawn' : end.winner === human ? 'You win!' : 'AI wins') : pos.turn !== human ? (aiError ? 'AI paused' : 'AI is thinking…') : check ? 'You’re in check' : 'Your turn';
 
   function commitMove(m: Move) {
+    triggerMoveAnimation(m, pos);
     const next = applyMove(pos, m, rules);
     setHistory(h => [...h, { position: next, move: m, label: notation(pos, m, rules) }]);
     setSelected(null); setSelectedPocket(null); setPendingDuckMove(null); setPromotion([]); setAiError('');
@@ -99,6 +183,10 @@ export default function Home() {
     } catch { queueMicrotask(() => setAiError('This browser could not start the AI. Please try another browser.')); }
   }, [pos, rules, difficulty, human, end, retry, localGame]);
   function startGame() {
+    animSeq.current++;
+    setMoveAnim(null);
+    setShatterAnim(null);
+    setDuckAnim(null);
     const side: Color = draftHuman === 'random' ? (Math.random() < 0.5 ? 'w' : 'b') : draftHuman;
     workerRef.current?.terminate(); setRules({ ...draft }); setActiveSideChoice(draftHuman); setHuman(side); setFlipped(side === 'b');
     setHistory([{ position: initialPosition(draft) }]); setSelected(null); setSelectedPocket(null); setPendingDuckMove(null); setPromotion([]); setResigned(null); setAiError(''); setConfirmNew(false);
@@ -108,6 +196,9 @@ export default function Home() {
     if (end || (!localGame && pos.turn !== human) || thinking) return;
     if (pendingDuckMove) {
       if (validDuckSquares.includes(i)) {
+        if (typeof pos.duck === 'number' && pos.duck !== i) {
+          triggerDuckAnimation(pos.duck, i);
+        }
         commitMove({ ...pendingDuckMove, duck: i });
         return;
       }
@@ -124,6 +215,7 @@ export default function Home() {
       const candidate = candidates[0];
       if (pos.board[candidate.to]?.kind === 'k') { commitMove(candidate); return; }
       if (rules.duckChess) {
+        triggerMoveAnimation(candidate, pos);
         setPendingDuckMove(candidate);
         setSelected(null);
         setSelectedPocket(null);
@@ -136,6 +228,10 @@ export default function Home() {
     setSelected(selected === i ? null : pos.board[i]?.color === (localGame ? pos.turn : human) ? i : null);
   }
   function undo() {
+    animSeq.current++;
+    setMoveAnim(null);
+    setShatterAnim(null);
+    setDuckAnim(null);
     workerRef.current?.terminate();
     const remove = !localGame && pos.turn === human && history.length > 2 ? 2 : 1;
     setHistory(h => h.slice(0, Math.max(1, h.length - remove))); setResigned(null); setSelected(null); setSelectedPocket(null); setPendingDuckMove(null); setPromotion([]); setAiError('');
@@ -215,14 +311,35 @@ export default function Home() {
             const eligible = !pendingDuckMove && showEligiblePieces && eligiblePieces.has(i);
             const possible = !pendingDuckMove && moves.some(m => m.to === i && (selectedPocket ? m.drop === selectedPocket : !m.drop && m.from === selected));
             const isCheck = check && piece?.kind === 'k' && piece.color === pos.turn;
+
+            const isMoving = moveAnim?.to === i && !moveAnim.drop;
+            const isDropping = moveAnim?.to === i && moveAnim.drop;
+            const isCastlingRook = moveAnim?.castlingRook?.to === i;
+            const isDuckMoving = duckAnim?.to === i;
+            const isShattering = shatterAnim?.square === i;
+
+            const moveStyle = isMoving ? (() => {
+              const { dx, dy } = getDisplacement(moveAnim.from, moveAnim.to, flipped);
+              return { '--dx': `${dx}%`, '--dy': `${dy}%` } as React.CSSProperties;
+            })() : isCastlingRook ? (() => {
+              const { dx, dy } = getDisplacement(moveAnim.castlingRook!.from, moveAnim.castlingRook!.to, flipped);
+              return { '--dx': `${dx}%`, '--dy': `${dy}%` } as React.CSSProperties;
+            })() : undefined;
+
+            const duckStyle = isDuckMoving ? (() => {
+              const { dx, dy } = getDisplacement(duckAnim.from, duckAnim.to, flipped);
+              return { '--dx': `${dx}%`, '--dy': `${dy}%` } as React.CSSProperties;
+            })() : undefined;
+
             return <button key={i} id={`sq-${i}`} aria-label={`${squareName(i)}${hasDuck ? ' Duck blocker' : piece ? ` ${piece.color === 'w' ? 'White' : 'Black'} ${names[piece.kind]}${piece.promoted && rules.pieceDrops ? ' (promoted pawn)' : ''}` : ' empty'}${eligible ? ', can move' : ''}${possible ? ', legal move' : ''}${isDuckTarget ? ', place duck here' : ''}`} aria-pressed={selected === i || pendingDuckMove?.to === i} onClick={() => clickSquare(i)} onKeyDown={e => {
               const offsets: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowUp: -8, ArrowDown: 8 };
               if (e.key === 'Escape') { setSelected(null); setSelectedPocket(null); setPendingDuckMove(null); }
               if (e.key in offsets) { e.preventDefault(); const target = display + offsets[e.key]; if (target >= 0 && target < 64) document.getElementById(`sq-${flipped ? 63 - target : target}`)?.focus(); }
-            }} className={`square ${(Math.floor(i / 8) + i % 8) % 2 ? 'dark-square' : 'light-square'} ${selected === i || pendingDuckMove?.to === i ? 'selected' : ''} ${eligible ? 'eligible-piece' : ''} ${lastMove && (lastMove.from === i || lastMove.to === i) ? 'last-move' : ''} ${isCheck ? 'in-check' : ''} ${rules.goal === 'hill' && [27, 28, 35, 36].includes(i) ? 'hill-square' : ''}`}>
-              {hasDuck && <span className="duck-piece" role="img" aria-label="Duck blocker"><DuckIcon size="100%" className="duck-piece-svg" filled /></span>}
+            }} className={`square ${(Math.floor(i / 8) + i % 8) % 2 ? 'dark-square' : 'light-square'} ${selected === i || pendingDuckMove?.to === i ? 'selected' : ''} ${eligible ? 'eligible-piece' : ''} ${lastMove && (lastMove.from === i || lastMove.to === i) ? 'last-move' : ''} ${isCheck ? 'in-check' : ''} ${rules.goal === 'hill' && [27, 28, 35, 36].includes(i) ? 'hill-square' : ''} ${isMoving || isCastlingRook || isDuckMoving ? 'has-moving-piece' : ''}`}>
+              {hasDuck && <span className={`duck-piece${isDuckMoving ? ' moving-duck' : ''}`} style={duckStyle} role="img" aria-label="Duck blocker"><DuckIcon size="100%" className="duck-piece-svg" filled /></span>}
               {displayPos.lastExplosion?.includes(i) && <><span className="blast-effect" role="img" aria-label="Explosion blast"><ExplosionIcon size={32} className="blast-svg-icon" filled /></span><span className="blast-ring" aria-hidden="true" /></>}
-              {piece && <PieceGlyph piece={piece} />}{piece?.promoted && rules.pieceDrops && <small className="promoted-mark" aria-hidden="true">~</small>}{eligible && <span className="eligible-marker" aria-hidden="true" />}{possible && <span className={piece ? 'capture-target' : 'move-target'} />}{isDuckTarget && <span className="duck-target" aria-hidden="true" />}
+              {isShattering && shatterAnim && <span className="shatter-container" aria-hidden="true"><span className="shatter-impact-ring" /><span className="shatter-flash" /><span className={`shatter-shard shard-tl ${shatterAnim.piece.color === 'w' ? 'white-piece' : 'black-piece'}`}>{glyphs[shatterAnim.piece.color][shatterAnim.piece.kind]}</span><span className={`shatter-shard shard-tr ${shatterAnim.piece.color === 'w' ? 'white-piece' : 'black-piece'}`}>{glyphs[shatterAnim.piece.color][shatterAnim.piece.kind]}</span><span className={`shatter-shard shard-bl ${shatterAnim.piece.color === 'w' ? 'white-piece' : 'black-piece'}`}>{glyphs[shatterAnim.piece.color][shatterAnim.piece.kind]}</span><span className={`shatter-shard shard-br ${shatterAnim.piece.color === 'w' ? 'white-piece' : 'black-piece'}`}>{glyphs[shatterAnim.piece.color][shatterAnim.piece.kind]}</span></span>}
+              {piece && <PieceGlyph piece={piece} className={isMoving || isCastlingRook ? 'moving-piece' : isDropping ? 'dropping-piece' : undefined} style={moveStyle} />}{piece?.promoted && rules.pieceDrops && <small className="promoted-mark" aria-hidden="true">~</small>}{eligible && <span className="eligible-marker" aria-hidden="true" />}{possible && <span className={piece ? 'capture-target' : 'move-target'} />}{isDuckTarget && <span className="duck-target" aria-hidden="true" />}
               {display % 8 === 0 && <small className="rank">{8 - Math.floor(i / 8)}</small>}{display >= 56 && <small className="file">{'abcdefgh'[i % 8]}</small>}
             </button>;
           })}
@@ -250,6 +367,7 @@ export default function Home() {
     <footer><span>CHESS SANDBOX / EXPERIMENT. PLAY. REPEAT.</span><span>{localGame ? 'Your rules. Shared board.' : 'Your rules. Same rules for the AI.'}</span></footer>
     <Dialog open={promotion.length > 0} onOpenChange={open => { if (!open) setPromotion([]); }}><DialogContent className="chess-dialog"><DialogHeader><DialogTitle>Choose your promotion</DialogTitle><DialogDescription>Your pawn has reached the last rank.</DialogDescription></DialogHeader><div className="promotion-choices">{promotion.map(m => <button key={m.promotion} onClick={() => {
       if (rules.duckChess && pos.board[m.to]?.kind !== 'k') {
+        triggerMoveAnimation(m, pos);
         setPendingDuckMove(m);
         setPromotion([]);
         setSelected(null);
