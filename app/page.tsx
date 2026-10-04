@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { RotateCcw, RefreshCw, SlidersHorizontal, ChevronDown, ChevronUp, FlaskConical, Cpu, Flag } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -31,7 +32,6 @@ export default function Home() {
   const [selected, setSelected] = useState<number | null>(null);
   const [promotion, setPromotion] = useState<Move[]>([]);
   const [expanded, setExpanded] = useState(false);
-  const [thinking, setThinking] = useState(false);
   const [aiError, setAiError] = useState('');
   const [retry, setRetry] = useState(0);
   const [confirmNew, setConfirmNew] = useState(false);
@@ -53,6 +53,7 @@ export default function Home() {
   const changed = JSON.stringify(draft) !== JSON.stringify(rules) || draftHuman !== human;
   const lastMove = history[history.length - 1].move;
   const moveList = history.slice(1);
+  const thinking = !end && pos.turn !== human && !aiError;
   const status = end ? (end.winner === null ? 'Game drawn' : end.winner === human ? 'You win!' : 'Sandbox AI wins') : pos.turn !== human ? (aiError ? 'AI paused' : 'Sandbox AI is thinking…') : check ? 'You’re in check' : 'Your turn';
 
   function commitMove(m: Move) {
@@ -60,24 +61,23 @@ export default function Home() {
     setHistory(h => [...h, { position: next, move: m, label: notation(pos, m, rules) }]);
     setSelected(null); setPromotion([]); setAiError('');
   }
-  const commitRef = useRef(commitMove); commitRef.current = commitMove;
+  const commitRef = useRef(commitMove);
+  useEffect(() => { commitRef.current = commitMove; });
   useEffect(() => {
-    if (end || pos.turn === human) { setThinking(false); return; }
-    setThinking(true); setAiError('');
+    if (end || pos.turn === human) return;
     let worker: Worker;
     try {
       worker = new ChessWorker();
       workerRef.current = worker;
       worker.onmessage = ({ data }) => {
-        setThinking(false);
         if (data.error) setAiError(data.error);
         else if (data.move) commitRef.current(data.move);
         else setAiError('No AI move returned. Try again.');
       };
-      worker.onerror = () => { setThinking(false); setAiError('AI could not start. Please retry.'); };
+      worker.onerror = () => { setAiError('AI could not start. Please retry.'); };
       const timer = setTimeout(() => worker.postMessage({ position: pos, rules, difficulty }), 300);
       return () => { clearTimeout(timer); worker.terminate(); workerRef.current = null; };
-    } catch { setThinking(false); setAiError('This browser could not start the AI. Please try another browser.'); }
+    } catch { queueMicrotask(() => setAiError('This browser could not start the AI. Please try another browser.')); }
   }, [pos, rules, difficulty, human, end, retry]);
   function startGame() {
     workerRef.current?.terminate(); setRules({ ...draft }); setHuman(draftHuman); setFlipped(draftHuman === 'b');
@@ -96,7 +96,8 @@ export default function Home() {
     const remove = pos.turn === human && history.length > 2 ? 2 : 1;
     setHistory(h => h.slice(0, Math.max(1, h.length - remove))); setResigned(false); setSelected(null); setPromotion([]); setAiError('');
   }
-  const liveRef = useRef({ pos, rules, moves, status }); liveRef.current = { pos, rules, moves, status };
+  const liveRef = useRef({ pos, rules, moves, status });
+  useEffect(() => { liveRef.current = { pos, rules, moves, status }; });
   useEffect(() => {
     type ToolContext = { registerTool: (tool: object, options: { signal: AbortSignal }) => void | Promise<void> };
     const context = (document as Document & { modelContext?: ToolContext }).modelContext;
@@ -120,7 +121,7 @@ export default function Home() {
     ['superKnights', 'Super knights', 'Knights also move one square any way.'],
   ];
   return <main>
-    <header><a className="brand" href="/" aria-label="Chess Sandbox home"><img className="brand-icon" src="/chess-sandbox-icon.png" alt="" width={44} height={44} /><span className="brand-name">Chess <span className="brand-light">Sandbox</span></span><sup>BETA</sup></a><span className="header-note">A familiar game. Your rules.</span><span className="local-badge"><Cpu size={14} /> PLAY VS AI</span></header>
+    <header><Link className="brand" href="/" aria-label="Chess Sandbox home"><img className="brand-icon" src="/chess-sandbox-icon.png" alt="" width={44} height={44} /><span className="brand-name">Chess <span className="brand-light">Sandbox</span></span><sup>BETA</sup></Link><span className="header-note">A familiar game. Your rules.</span><span className="local-badge"><Cpu size={14} /> PLAY VS AI</span></header>
     <div className="workspace">
       <section className="play-area" aria-label="Chess game">
         <div className="section-heading"><div><p className="eyebrow">THE PLAYGROUND</p><h1>Make your next move.</h1></div><span className="pill">{activePreset?.name ?? 'Custom rules'}</span></div>
@@ -141,7 +142,7 @@ export default function Home() {
           })}
         </div>
         <div className="player"><span className="avatar human">{human === 'w' ? '♙' : '♟'}</span><div><strong>You</strong><small>{human === 'w' ? 'White' : 'Black'} · {end ? end.reason : history.length === 1 ? (human === 'w' ? 'First move is yours' : 'AI makes the first move') : `${Math.floor(pos.ply / 2) + 1}. ${pos.turn === human ? 'Find your next move' : 'Planning the reply'}`}</small></div><span className={end ? 'game-result' : 'turn-dot'} role="status" aria-live="polite">{status}</span></div>
-        {aiError && <div className="error-message" role="alert">{aiError}<button onClick={() => setRetry(n => n + 1)}>Retry AI</button></div>}
+        {aiError && <div className="error-message" role="alert">{aiError}<button onClick={() => { setAiError(''); setRetry(n => n + 1); }}>Retry AI</button></div>}
         <div className="board-toolbar"><div><button onClick={undo} disabled={history.length <= (human === 'b' ? 2 : 1)}><RotateCcw size={15} /> Undo turn</button><button onClick={() => setFlipped(f => !f)}><RefreshCw size={15} /> Flip board</button></div><button onClick={() => setConfirmResign(true)} disabled={!!end || history.length === 1} aria-label="Resign game"><Flag size={15} /></button></div>
         <div className="move-log"><div className="move-log-title"><h3>Move history</h3><span>{moveList.length} plies</span></div>{!moveList.length ? <p className="empty-history">Every experiment starts with a move.</p> : <div className="move-rows">{Array.from({ length: Math.ceil(moveList.length / 2) }, (_, i) => <div className="move-row" key={i}><span>{i + 1}.</span><b>{moveList[i * 2]?.label}</b><b>{moveList[i * 2 + 1]?.label ?? '…'}</b></div>)}</div>}</div>
       </section>

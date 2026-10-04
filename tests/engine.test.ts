@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { initialPosition, legalMoves, applyMove, CLASSIC, outcome, inCheck, squareIndex, PRESETS } from '../lib/chess/engine.ts';
 import type { Position, Rules } from '../lib/chess/engine.ts';
+import { chooseMove } from '../lib/chess/ai.ts';
 function play(p: Position, from: string, to: string, r: Rules = CLASSIC) { const m = legalMoves(p, r).find(m => m.from === squareIndex(from) && m.to === squareIndex(to)); assert.ok(m, `${from}-${to}`); return applyMove(p, m); }
 function perft(p: Position, depth: number): number { if (!depth) return 1; return legalMoves(p, CLASSIC).reduce((n, m) => n + perft(applyMove(p, m), depth - 1), 0); }
 const bare = (): Position => ({ board: Array(64).fill(null), turn: 'w', rights: '', ep: null, halfmove: 0, ply: 0 });
@@ -35,4 +36,12 @@ test('random starts preserve armies, mirror sides, shield kings, and disable cas
   }
   assert.ok(seen.size > 50);
   assert.equal(initialPosition(CLASSIC).rights, 'KQkq');
+});
+test('AI calculates legal moves from randomized starting positions', () => {
+  const rules = { ...CLASSIC, randomStart: true };
+  const p = initialPosition(rules, () => 0.42);
+  const move = chooseMove(p, rules, 'easy');
+  assert.ok(move !== null);
+  const legal = legalMoves(p, rules);
+  assert.ok(legal.some(m => m.from === move.from && m.to === move.to));
 });

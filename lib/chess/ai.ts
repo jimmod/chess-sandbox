@@ -1,5 +1,5 @@
-import { applyMove, legalMoves, outcome } from './engine';
-import type { Position, Rules, Move } from './engine';
+import { applyMove, legalMoves, outcome } from './engine.ts';
+import type { Position, Rules, Move } from './engine.ts';
 export type Difficulty = 'easy' | 'medium' | 'hard';
 const values = { p: 100, n: 320, b: 335, r: 500, q: 900, k: 20000 };
 function evaluate(pos: Position, rules: Rules): number {
