@@ -10,7 +10,13 @@ function evaluate(pos: Position, rules: Rules): number {
     const center = 7 - Math.abs(3.5 - row) - Math.abs(3.5 - col);
     let value = values[p.kind];
     if (rules.goal === 'giveaway') value = -100 - (p.kind === 'k' ? 0 : value / 10);
-    else {
+    else if (rules.goal === 'annihilation') {
+      if (p.kind === 'k') value = 380;
+      value += 60; // every surviving piece is precious
+      if (p.kind === 'p') value += (p.color === 'w' ? 6 - row : row - 1) * 12 + center * 3;
+      if (p.kind === 'n' || p.kind === 'b') value += center * 10;
+      if (p.kind === 'n' && rules.superKnights) value += 100;
+    } else {
       if (p.kind === 'p') value += (p.color === 'w' ? 6 - row : row - 1) * 9 + center * 3;
       if (p.kind === 'n' || p.kind === 'b') value += center * 10;
       if (p.kind === 'n' && rules.superKnights) value += 100;
@@ -70,10 +76,13 @@ export function chooseMove(pos: Position, rules: Rules, difficulty: Difficulty, 
     return ms.slice().sort((a, b) => priority(p, b) - priority(p, a));
   }
   function priority(p: Position, m: Move) {
-    if (p.board[m.to]?.kind === 'k') return 100000;
+    if (rules.goal !== 'annihilation' && p.board[m.to]?.kind === 'k') return 100000;
     if (m.drop) return 40 + (7 - Math.abs(3.5 - Math.floor(m.to / 8)) - Math.abs(3.5 - m.to % 8)) * 5;
     const target = p.board[m.to] || (m.ep !== undefined ? p.board[m.ep] : null);
-    return (target ? values[target.kind] * 10 - values[p.board[m.from]!.kind] : 0) + (m.promotion ? values[m.promotion] : 0) + (m.duck !== undefined ? 5 : 0);
+    const targetVal = target ? (rules.goal === 'annihilation' && target.kind === 'k' ? 380 : values[target.kind]) : 0;
+    const fromPiece = p.board[m.from];
+    const fromVal = fromPiece ? (rules.goal === 'annihilation' && fromPiece.kind === 'k' ? 380 : values[fromPiece.kind]) : 0;
+    return (target ? targetVal * 10 - fromVal : 0) + (m.promotion ? values[m.promotion] : 0) + (m.duck !== undefined ? 5 : 0);
   }
   function search(p: Position, depth: number, alpha: number, beta: number, ply: number): number {
     if ((++nodes & 15) === 0 && Date.now() >= deadline) throw new Error('timeout');

@@ -3,7 +3,7 @@ export type Kind = 'p' | 'n' | 'b' | 'r' | 'q' | 'k';
 export type Piece = { color: Color; kind: Kind; promoted?: boolean };
 export type RandomStart = 'off' | 'except-pawns' | 'all';
 export type Rules = {
-  goal: 'checkmate' | 'capture' | 'hill' | 'giveaway';
+  goal: 'checkmate' | 'capture' | 'hill' | 'giveaway' | 'annihilation';
   randomStart: RandomStart;
   duckChess: boolean;
   pieceDrops: boolean;
@@ -68,6 +68,22 @@ export const PRESETS: { id: string; name: string; description: string; icon: str
         'The Duck is completely neutral, cannot be captured, and blocks pieces from moving onto or through it.',
         'No check or checkmate: win by capturing the opponent\'s King.',
         'Knights can jump over the Duck.',
+      ],
+    },
+  },
+  {
+    id: 'annihilation',
+    name: 'Total Annihilation',
+    description: 'Capture every last piece',
+    icon: '⚔',
+    rules: { ...CLASSIC, goal: 'annihilation' },
+    details: {
+      summary: 'The King is just another soldier. Clear the board of all enemy pieces to win.',
+      rules: [
+        'The King can be captured like any ordinary piece without ending the game.',
+        'Check and checkmate do not exist—you can move pieces freely and king safety is ignored.',
+        'Win by capturing every single opposing piece on the board.',
+        'If a player has pieces remaining but has no legal moves left, they lose.',
       ],
     },
   },
@@ -288,12 +304,19 @@ export function legalMoves(pos: Position, rules: Rules): Move[] {
 }
 export type Outcome = { winner: Color | null; reason: string };
 export function outcome(pos: Position, rules: Rules, moves?: Move[]): Outcome | null {
+  if (rules.goal === 'annihilation') {
+    for (const color of ['w', 'b'] as Color[]) {
+      const hasPieces = pos.board.some(p => p?.color === color) || (rules.pieceDrops && POCKET_KINDS.some(k => (pos.pockets?.[color][k] ?? 0) > 0));
+      if (!hasPieces) return { winner: opposite(color), reason: 'All enemy pieces eliminated' };
+    }
+  }
   if (rules.goal === 'capture') for (const color of ['w', 'b'] as Color[]) if (!pos.board.some(p => p?.color === color && p.kind === 'k')) return { winner: opposite(color), reason: 'King captured' };
   if (rules.goal === 'hill') for (const i of [27, 28, 35, 36]) if (pos.board[i]?.kind === 'k') return { winner: pos.board[i]!.color, reason: 'King reached the center' };
   if (rules.goal === 'giveaway' && !pos.board.some(p => p?.color === pos.turn) && !POCKET_KINDS.some(k => (pos.pockets?.[pos.turn][k] ?? 0) > 0)) return { winner: pos.turn, reason: 'All pieces given away' };
   const available = moves ?? legalMoves(pos, rules);
   if (!available.length) {
     if (rules.goal === 'giveaway') return { winner: pos.turn, reason: 'No legal moves — you win' };
+    if (rules.goal === 'annihilation') return { winner: opposite(pos.turn), reason: 'No legal moves left' };
     if (royal(rules) && inCheck(pos, pos.turn, rules)) return { winner: opposite(pos.turn), reason: 'Checkmate' };
     return { winner: null, reason: 'Stalemate' };
   }

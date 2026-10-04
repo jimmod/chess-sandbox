@@ -264,3 +264,65 @@ test('AI selects winning king captures and duck placements in Duck Chess', () =>
   assert.ok(startMove.duck >= 0 && startMove.duck < 64);
   assert.ok(start.board[startMove.duck] === null || startMove.duck === startMove.from);
 });
+test('total annihilation rules: king can be captured without ending game, only total wipeout wins', () => {
+  const annRules = PRESETS.find(p => p.id === 'annihilation')!.rules;
+  assert.equal(annRules.goal, 'annihilation');
+
+  const p = bare();
+  p.turn = 'w';
+  p.board[60] = { color: 'w', kind: 'q' }; // e1 queen
+  p.board[56] = { color: 'w', kind: 'r' }; // a1 rook
+  p.board[4] = { color: 'b', kind: 'k' };  // e8 king
+  p.board[0] = { color: 'b', kind: 'r' };  // a8 rook
+
+  // White can capture black's king
+  const captureKingMove = legalMoves(p, annRules).find(m => m.from === 60 && m.to === 4);
+  assert.ok(captureKingMove);
+
+  // Capturing king does NOT end game because black still has a rook
+  const afterKingCaptured = applyMove(p, captureKingMove);
+  assert.equal(afterKingCaptured.board[4]?.color, 'w');
+  assert.equal(afterKingCaptured.board[0]?.color, 'b');
+  assert.equal(outcome(afterKingCaptured, annRules), null);
+
+  // Black moves the rook from a8 (0) to a7 (8)
+  const blackMove = legalMoves(afterKingCaptured, annRules).find(m => m.from === 0 && m.to === 8);
+  assert.ok(blackMove);
+  const afterRookMove = applyMove(afterKingCaptured, blackMove);
+
+  // White rook at a1 (56) captures the last black piece (rook at a7, 8)
+  const captureRookMove = legalMoves(afterRookMove, annRules).find(m => m.from === 56 && m.to === 8);
+  assert.ok(captureRookMove);
+  const afterFinalCapture = applyMove(afterRookMove, captureRookMove);
+
+  // All black pieces are eliminated -> White wins
+  assert.deepEqual(outcome(afterFinalCapture, annRules), { winner: 'w', reason: 'All enemy pieces eliminated' });
+});
+test('total annihilation rules: having pieces but no legal moves causes defeat', () => {
+  const annRules = PRESETS.find(p => p.id === 'annihilation')!.rules;
+  const p = bare();
+  p.turn = 'w';
+  // White has a trapped pawn that cannot move
+  p.board[48] = { color: 'w', kind: 'p' }; // a2 pawn
+  p.board[40] = { color: 'b', kind: 'p' }; // a3 pawn blocking it
+  // Black has another piece somewhere
+  p.board[0] = { color: 'b', kind: 'r' };
+
+  assert.equal(legalMoves(p, annRules).length, 0);
+  assert.deepEqual(outcome(p, annRules), { winner: 'b', reason: 'No legal moves left' });
+});
+test('AI can search and select moves in Total Annihilation', () => {
+  const annRules = PRESETS.find(p => p.id === 'annihilation')!.rules;
+  const p = bare();
+  p.turn = 'w';
+  p.board[60] = { color: 'w', kind: 'k' };
+  p.board[52] = { color: 'w', kind: 'r' };
+  p.board[4] = { color: 'b', kind: 'k' };
+  p.board[12] = { color: 'b', kind: 'p' };
+
+  const move = chooseMove(p, annRules, 'medium');
+  assert.ok(move !== null);
+  // White rook at 52 can capture pawn at 12
+  assert.ok(legalMoves(p, annRules).some(m => m.from === move.from && m.to === move.to));
+});
+
