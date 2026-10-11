@@ -122,8 +122,8 @@ export function chooseMove(pos: Position, rules: Rules, difficulty: Difficulty, 
 
   // Softmax temperature-based selection for move variety
   const temp = { easy: 200, medium: 40, hard: 12 }[difficulty];
-  const margin = { easy: Infinity, medium: 200, hard: 80 }[difficulty];
   const topScore = Math.max(...moveScores.map(s => s.score));
+  const margin = topScore >= 90000 ? 0 : { easy: Infinity, medium: 200, hard: 80 }[difficulty];
   const candidates = moveScores.filter(s => s.score >= topScore - margin);
   if (candidates.length > 1) {
     const maxS = Math.max(...candidates.map(c => c.score));
