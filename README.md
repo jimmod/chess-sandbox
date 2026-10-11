@@ -14,7 +14,7 @@ npm run typecheck
 npm run build
 ```
 
-See [the architecture document](doc/ARCHITECTURE.md) for system boundaries, state flow, AI behavior, hosting, and maintenance guidance. Update it alongside architectural changes.
+See [the architecture document](doc/ARCHITECTURE.md) for system boundaries, state flow, AI behavior, hosting, and maintenance guidance. Deep dive into [variants & rules](doc/VARIANTS.md), [engine internals](doc/ENGINE_GUIDE.md), [AI architecture](doc/AI_ARCHITECTURE.md), [UI & state machine](doc/UI_AND_STATE.md), and the [development guide](doc/DEVELOPMENT_GUIDE.md).
 
 ## Stack and architecture
 
