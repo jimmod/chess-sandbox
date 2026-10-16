@@ -9,6 +9,7 @@ export type Rules = {
   pieceDrops: boolean;
   atomic: boolean;
   markEligiblePieces: boolean;
+  dangerWarnings: boolean;
   forcedCapture: boolean;
   castling: boolean;
   enPassant: boolean;
@@ -23,7 +24,7 @@ export type Pockets = Record<Color, Record<PocketKind, number>>;
 export const emptyPockets = (): Pockets => ({ w: { p: 0, n: 0, b: 0, r: 0, q: 0 }, b: { p: 0, n: 0, b: 0, r: 0, q: 0 } });
 export type Move = { drop?: PocketKind; duck?: number; from: number; to: number; promotion?: Kind; ep?: number; rook?: [number, number] };
 export type Position = { pockets?: Pockets; duck?: number | null; board: (Piece | null)[]; turn: Color; rights: string; ep: number | null; halfmove: number; ply: number; lastExplosion?: number[] | null };
-export const CLASSIC: Rules = { goal: 'checkmate', randomStart: 'off', duckChess: false, pieceDrops: false, atomic: false, markEligiblePieces: false, forcedCapture: false, castling: true, enPassant: true, doubleStep: true, backwardCapture: false, superKnights: false, promotion: 'choice' };
+export const CLASSIC: Rules = { goal: 'checkmate', randomStart: 'off', duckChess: false, pieceDrops: false, atomic: false, markEligiblePieces: false, dangerWarnings: false, forcedCapture: false, castling: true, enPassant: true, doubleStep: true, backwardCapture: false, superKnights: false, promotion: 'choice' };
 export const PRESETS: { id: string; name: string; description: string; icon: string; rules: Rules; details: { summary: string; rules: string[] } }[] = [
   {
     id: 'classic',
@@ -501,4 +502,107 @@ export function candidateDuckSquares(pos: Position, prevDuck?: number | null): n
 
   if (!candidates.length) return emptySquares.slice(0, 3);
   return candidates.slice(0, 4);
+}
+
+export type MoveDangerAnalysis = {
+  destinationThreatened: boolean;
+  uncoveredSquares: number[];
+};
+
+export function threatenedPieces(pos: Position, rules: Rules, targetColor: Color = pos.turn): Set<number> {
+  const threatened = new Set<number>();
+  const oppColor = opposite(targetColor);
+  const oppPos: Position = { ...pos, turn: oppColor };
+  const oppMoves = legalMoves(oppPos, rules);
+
+  for (const m of oppMoves) {
+    if (pos.board[m.to]?.color === targetColor) {
+      threatened.add(m.to);
+    }
+    if (m.ep !== undefined && pos.board[m.ep]?.color === targetColor) {
+      threatened.add(m.ep);
+    }
+    if (rules.atomic && (pos.board[m.to] || m.ep !== undefined)) {
+      const tr = Math.floor(m.to / 8), tc = m.to % 8;
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          const nr = tr + dr, nc = tc + dc;
+          if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+            const adj = nr * 8 + nc;
+            const p = pos.board[adj];
+            if (p?.color === targetColor && p.kind !== 'p') {
+              threatened.add(adj);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return threatened;
+}
+
+export function analyzeMoveDanger(
+  pos: Position,
+  m: Move,
+  rules: Rules,
+  currentlyThreatened?: Set<number>
+): MoveDangerAnalysis {
+  if (pos.board[m.to]?.kind === 'k' && (rules.goal === 'capture' || rules.duckChess)) {
+    return { destinationThreatened: false, uncoveredSquares: [] };
+  }
+
+  const before = currentlyThreatened ?? threatenedPieces(pos, rules, pos.turn);
+  const nextPos = applyMove(pos, m, rules);
+  const nextOppMoves = legalMoves(nextPos, rules);
+
+  let destinationThreatened = false;
+  const uncoveredSet = new Set<number>();
+
+  for (const om of nextOppMoves) {
+    if (om.to === m.to || (om.ep !== undefined && om.ep === m.to) || (m.rook && om.to === m.rook[1])) {
+      destinationThreatened = true;
+    }
+    if (rules.atomic && nextPos.board[m.to]?.kind !== 'p' && (nextPos.board[om.to] || om.ep !== undefined)) {
+      const tr = Math.floor(om.to / 8), tc = om.to % 8;
+      const mr = Math.floor(m.to / 8), mc = m.to % 8;
+      if (Math.max(Math.abs(tr - mr), Math.abs(tc - mc)) <= 1) {
+        destinationThreatened = true;
+      }
+    }
+
+    if (om.to !== m.to && (!m.rook || om.to !== m.rook[1]) && nextPos.board[om.to]?.color === pos.turn) {
+      if (!before.has(om.to)) {
+        uncoveredSet.add(om.to);
+      }
+    }
+    if (om.ep !== undefined && om.ep !== m.to && nextPos.board[om.ep]?.color === pos.turn) {
+      if (!before.has(om.ep)) {
+        uncoveredSet.add(om.ep);
+      }
+    }
+    if (rules.atomic && (nextPos.board[om.to] || om.ep !== undefined)) {
+      const tr = Math.floor(om.to / 8), tc = om.to % 8;
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          const nr = tr + dr, nc = tc + dc;
+          if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+            const adj = nr * 8 + nc;
+            if (adj !== m.to && (!m.rook || adj !== m.rook[1]) && nextPos.board[adj]?.color === pos.turn && nextPos.board[adj]?.kind !== 'p') {
+              if (!before.has(adj)) {
+                uncoveredSet.add(adj);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    destinationThreatened,
+    uncoveredSquares: Array.from(uncoveredSet),
+  };
 }

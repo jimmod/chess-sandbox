@@ -115,6 +115,7 @@ export type Rules = {
   pieceDrops: boolean;
   atomic: boolean;
   markEligiblePieces: boolean;
+  dangerWarnings: boolean;
   forcedCapture: boolean;
   castling: boolean;
   enPassant: boolean;
@@ -146,28 +147,31 @@ export type Rules = {
 ### 5. `atomic`
 * Every capture detonates a 3x3 blast destroying capturer, victim, and adjacent non-pawns. Pawns are immune to the blast radius. Kings cannot capture and moves blowing up own king are illegal. Connected kings cannot be in check. Detonating enemy king wins immediately.
 
-### 6. `markEligiblePieces`
+### 6. `dangerWarnings`
+* Beginner assistance switch. Displays warning indicators (`!`) on friendly pieces that can be captured by the opponent on the next move. When selecting a piece to move, highlights dangerous destination squares where the moving piece can be eaten, and displays a warning (`⚠`) plus exposed piece outline when a move vacates cover and exposes another friendly piece to capture. Does not alter move legality or AI search.
+
+### 7. `markEligiblePieces`
 * UI visual assistance switch. Highlights pieces on the board that currently possess legal moves. When `forcedCapture` is active, highlights only the pieces capable of capturing. Does not alter move legality or AI search.
 
-### 7. `forcedCapture`
+### 8. `forcedCapture`
 * If any capture is available, non-capturing moves are filtered out. If multiple captures exist, any of them may be selected.
 
-### 8. `castling`
+### 9. `castling`
 * Allows O-O and O-O-O when king and rook have not moved, squares between are empty, and king does not pass through or land in check. Automatically disabled when `randomStart` is not `'off'`.
 
-### 9. `enPassant`
+### 10. `enPassant`
 * Allows pawns to capture an enemy pawn that just advanced two squares on the immediately preceding turn.
 
-### 10. `doubleStep`
+### 11. `doubleStep`
 * Allows pawns on their starting rank (rank 2 for White, rank 7 for Black) to advance two squares forward if both intermediate and destination squares are empty.
 
-### 11. `backwardCapture`
+### 12. `backwardCapture`
 * Grants pawns the ability to capture diagonally backward one square (1 rank backward, 1 file left/right). Does not permit backward quiet moves.
 
-### 12. `superKnights`
+### 13. `superKnights`
 * Grants knights all standard knight jumps plus one-square steps in all eight directions (horizontal, vertical, diagonal).
 
-### 13. `promotion`
+### 14. `promotion`
 * `'choice'`: Player chooses Queen, Rook, Bishop, or Knight upon reaching the 8th rank.
 * `'q'`: Automatically promotes to Queen.
 * `'n'`: Automatically promotes to Knight (useful for tactical variant setups).

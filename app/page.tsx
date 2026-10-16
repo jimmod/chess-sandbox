@@ -9,8 +9,8 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CLASSIC, PRESETS, POCKET_KINDS, initialPosition, legalMoves, applyMove, outcome, inCheck, royal, notation, positionKey, squareName, opposite, legalDuckSquares } from '@/lib/chess/engine';
-import type { Position, Rules, Move, Color, Piece, PocketKind } from '@/lib/chess/engine';
+import { CLASSIC, PRESETS, POCKET_KINDS, initialPosition, legalMoves, applyMove, outcome, inCheck, royal, notation, positionKey, squareName, opposite, legalDuckSquares, threatenedPieces, analyzeMoveDanger } from '@/lib/chess/engine';
+import type { Position, Rules, Move, Color, Piece, PocketKind, MoveDangerAnalysis } from '@/lib/chess/engine';
 import type { Difficulty } from '@/lib/chess/ai';
 import ChessWorker from '@/lib/chess/ai.worker?worker';
 
@@ -71,6 +71,7 @@ export default function Home() {
   const [flipped, setFlipped] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [selectedPocket, setSelectedPocket] = useState<PocketKind | null>(null);
+  const [hoveredSquare, setHoveredSquare] = useState<number | null>(null);
   const [pendingDuckMove, setPendingDuckMove] = useState<Move | null>(null);
   const [promotion, setPromotion] = useState<Move[]>([]);
   const [expanded, setExpanded] = useState(false);
@@ -150,6 +151,35 @@ export default function Home() {
   }, [pos, rules, moves, history, resigned]);
   const eligiblePieces = useMemo(() => new Set(moves.map(m => m.from)), [moves]);
   const showEligiblePieces = rules.markEligiblePieces && !end && (localGame || pos.turn === human);
+  const showDangerWarnings = rules.dangerWarnings && !end && (localGame || pos.turn === human);
+  const threatenedPiecesSet = useMemo(() => {
+    if (!showDangerWarnings) return new Set<number>();
+    return threatenedPieces(pos, rules, pos.turn);
+  }, [showDangerWarnings, pos, rules]);
+  const selectedCandidateMoves = useMemo(() => {
+    if (selected === null && selectedPocket === null) return [];
+    return moves.filter(m => selectedPocket ? m.drop === selectedPocket : !m.drop && m.from === selected);
+  }, [moves, selected, selectedPocket]);
+  const moveDangersByTo = useMemo(() => {
+    if (!showDangerWarnings || selectedCandidateMoves.length === 0) return new Map<number, MoveDangerAnalysis>();
+    const map = new Map<number, MoveDangerAnalysis>();
+    for (const m of selectedCandidateMoves) {
+      const analysis = analyzeMoveDanger(pos, m, rules, threatenedPiecesSet);
+      const existing = map.get(m.to);
+      if (!existing) {
+        map.set(m.to, analysis);
+      } else {
+        map.set(m.to, {
+          destinationThreatened: existing.destinationThreatened || analysis.destinationThreatened,
+          uncoveredSquares: Array.from(new Set([...existing.uncoveredSquares, ...analysis.uncoveredSquares])),
+        });
+      }
+    }
+    return map;
+  }, [showDangerWarnings, selectedCandidateMoves, pos, rules, threatenedPiecesSet]);
+  const hoveredDanger = hoveredSquare !== null ? moveDangersByTo.get(hoveredSquare) : null;
+  const hoveredUncoveredSquares = hoveredDanger ? hoveredDanger.uncoveredSquares : [];
+
   const check = royal(rules) && inCheck(pos, pos.turn, rules);
   const draftPreset = PRESETS.find(p => JSON.stringify(p.rules) === JSON.stringify(draft));
   const changed = JSON.stringify(draft) !== JSON.stringify(rules) || draftHuman !== activeSideChoice;
@@ -162,7 +192,7 @@ export default function Home() {
     triggerMoveAnimation(m, pos);
     const next = applyMove(pos, m, rules);
     setHistory(h => [...h, { position: next, move: m, label: notation(pos, m, rules) }]);
-    setSelected(null); setSelectedPocket(null); setPendingDuckMove(null); setPromotion([]); setAiError('');
+    setSelected(null); setSelectedPocket(null); setHoveredSquare(null); setPendingDuckMove(null); setPromotion([]); setAiError('');
   }
   const commitRef = useRef(commitMove);
   useEffect(() => { commitRef.current = commitMove; });
@@ -189,7 +219,7 @@ export default function Home() {
     setDuckAnim(null);
     const side: Color = draftHuman === 'random' ? (Math.random() < 0.5 ? 'w' : 'b') : draftHuman;
     workerRef.current?.terminate(); setRules({ ...draft }); setActiveSideChoice(draftHuman); setHuman(side); setFlipped(side === 'b');
-    setHistory([{ position: initialPosition(draft) }]); setSelected(null); setSelectedPocket(null); setPendingDuckMove(null); setPromotion([]); setResigned(null); setAiError(''); setConfirmNew(false);
+    setHistory([{ position: initialPosition(draft) }]); setSelected(null); setSelectedPocket(null); setHoveredSquare(null); setPendingDuckMove(null); setPromotion([]); setResigned(null); setAiError(''); setConfirmNew(false);
   }
   function requestNew() { if (history.length > 1 && !end) setConfirmNew(true); else startGame(); }
   function clickSquare(i: number) {
@@ -234,7 +264,7 @@ export default function Home() {
     setDuckAnim(null);
     workerRef.current?.terminate();
     const remove = !localGame && pos.turn === human && history.length > 2 ? 2 : 1;
-    setHistory(h => h.slice(0, Math.max(1, h.length - remove))); setResigned(null); setSelected(null); setSelectedPocket(null); setPendingDuckMove(null); setPromotion([]); setAiError('');
+    setHistory(h => h.slice(0, Math.max(1, h.length - remove))); setResigned(null); setSelected(null); setSelectedPocket(null); setHoveredSquare(null); setPendingDuckMove(null); setPromotion([]); setAiError('');
   }
   const liveRef = useRef({ pos, rules, moves, status });
   useEffect(() => { liveRef.current = { pos, rules, moves, status }; });
@@ -255,6 +285,7 @@ export default function Home() {
     ['duckChess', 'Duck chess', 'Move the neutral duck to block any square after each turn.'],
     ['pieceDrops', 'Piece drops / pockets', 'Captured pieces become reserves you can drop.'],
     ['atomic', 'Atomic explosions', 'Captures trigger an explosive blast destroying adjacent non-pawns.'],
+    ['dangerWarnings', 'Threat warnings', 'Highlight threatened pieces, dangerous spots, and uncovered pieces (beginner assist).'],
     ['markEligiblePieces', 'Mark eligible pieces', 'Mark your pieces that have a legal move.'],
     ['forcedCapture', 'Forced captures', 'If a capture is available, take it.'],
     ['castling', 'Castling', 'Let king and rook move together.'],
@@ -312,6 +343,12 @@ export default function Home() {
             const possible = !pendingDuckMove && moves.some(m => m.to === i && (selectedPocket ? m.drop === selectedPocket : !m.drop && m.from === selected));
             const isCheck = check && piece?.kind === 'k' && piece.color === pos.turn;
 
+            const isThreatened = showDangerWarnings && piece?.color === pos.turn && threatenedPiecesSet.has(i);
+            const danger = possible ? moveDangersByTo.get(i) : undefined;
+            const isDangerDestination = Boolean(danger?.destinationThreatened);
+            const hasUncovered = Boolean(danger && danger.uncoveredSquares.length > 0);
+            const willBeExposed = showDangerWarnings && hoveredUncoveredSquares.includes(i);
+
             const isMoving = moveAnim?.to === i && !moveAnim.drop;
             const isDropping = moveAnim?.to === i && moveAnim.drop;
             const isCastlingRook = moveAnim?.castlingRook?.to === i;
@@ -331,19 +368,54 @@ export default function Home() {
               return { '--dx': `${dx}%`, '--dy': `${dy}%` } as React.CSSProperties;
             })() : undefined;
 
-            return <button key={i} id={`sq-${i}`} aria-label={`${squareName(i)}${hasDuck ? ' Duck blocker' : piece ? ` ${piece.color === 'w' ? 'White' : 'Black'} ${names[piece.kind]}${piece.promoted && rules.pieceDrops ? ' (promoted pawn)' : ''}` : ' empty'}${eligible ? ', can move' : ''}${possible ? ', legal move' : ''}${isDuckTarget ? ', place duck here' : ''}`} aria-pressed={selected === i || pendingDuckMove?.to === i} onClick={() => clickSquare(i)} onKeyDown={e => {
+            return <button key={i} id={`sq-${i}`} aria-label={`${squareName(i)}${hasDuck ? ' Duck blocker' : piece ? ` ${piece.color === 'w' ? 'White' : 'Black'} ${names[piece.kind]}${piece.promoted && rules.pieceDrops ? ' (promoted pawn)' : ''}` : ' empty'}${eligible ? ', can move' : ''}${isThreatened ? ', can be eaten by opponent' : ''}${possible ? ', legal move' : ''}${possible && isDangerDestination ? ', dangerous spot: piece can be eaten here' : ''}${possible && hasUncovered ? `, warning: exposes ${danger!.uncoveredSquares.map(sq => squareName(sq)).join(', ')} to capture` : ''}${willBeExposed ? ', will be exposed to capture' : ''}${isDuckTarget ? ', place duck here' : ''}`} aria-pressed={selected === i || pendingDuckMove?.to === i} onClick={() => clickSquare(i)} onMouseEnter={() => setHoveredSquare(i)} onMouseLeave={() => setHoveredSquare(null)} onFocus={() => setHoveredSquare(i)} onBlur={() => setHoveredSquare(null)} onKeyDown={e => {
               const offsets: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowUp: -8, ArrowDown: 8 };
-              if (e.key === 'Escape') { setSelected(null); setSelectedPocket(null); setPendingDuckMove(null); }
+              if (e.key === 'Escape') { setSelected(null); setSelectedPocket(null); setPendingDuckMove(null); setHoveredSquare(null); }
               if (e.key in offsets) { e.preventDefault(); const target = display + offsets[e.key]; if (target >= 0 && target < 64) document.getElementById(`sq-${flipped ? 63 - target : target}`)?.focus(); }
-            }} className={`square ${(Math.floor(i / 8) + i % 8) % 2 ? 'dark-square' : 'light-square'} ${selected === i || pendingDuckMove?.to === i ? 'selected' : ''} ${eligible ? 'eligible-piece' : ''} ${lastMove && (lastMove.from === i || lastMove.to === i) ? 'last-move' : ''} ${isCheck ? 'in-check' : ''} ${rules.goal === 'hill' && [27, 28, 35, 36].includes(i) ? 'hill-square' : ''} ${isMoving || isCastlingRook || isDuckMoving ? 'has-moving-piece' : ''}`}>
+            }} className={`square ${(Math.floor(i / 8) + i % 8) % 2 ? 'dark-square' : 'light-square'} ${selected === i || pendingDuckMove?.to === i ? 'selected' : ''} ${eligible ? 'eligible-piece' : ''} ${isThreatened ? 'threatened-piece' : ''} ${willBeExposed ? 'will-be-exposed' : ''} ${lastMove && (lastMove.from === i || lastMove.to === i) ? 'last-move' : ''} ${isCheck ? 'in-check' : ''} ${rules.goal === 'hill' && [27, 28, 35, 36].includes(i) ? 'hill-square' : ''} ${isMoving || isCastlingRook || isDuckMoving ? 'has-moving-piece' : ''}`}>
               {hasDuck && <span className={`duck-piece${isDuckMoving ? ' moving-duck' : ''}`} style={duckStyle} role="img" aria-label="Duck blocker"><DuckIcon size="100%" className="duck-piece-svg" filled /></span>}
               {displayPos.lastExplosion?.includes(i) && <><span className="blast-effect" role="img" aria-label="Explosion blast"><ExplosionIcon size={32} className="blast-svg-icon" filled /></span><span className="blast-ring" aria-hidden="true" /></>}
               {isShattering && shatterAnim && <span className="shatter-container" aria-hidden="true"><span className="shatter-impact-ring" /><span className="shatter-flash" /><span className={`shatter-shard shard-tl ${shatterAnim.piece.color === 'w' ? 'white-piece' : 'black-piece'}`}>{glyphs[shatterAnim.piece.color][shatterAnim.piece.kind]}</span><span className={`shatter-shard shard-tr ${shatterAnim.piece.color === 'w' ? 'white-piece' : 'black-piece'}`}>{glyphs[shatterAnim.piece.color][shatterAnim.piece.kind]}</span><span className={`shatter-shard shard-bl ${shatterAnim.piece.color === 'w' ? 'white-piece' : 'black-piece'}`}>{glyphs[shatterAnim.piece.color][shatterAnim.piece.kind]}</span><span className={`shatter-shard shard-br ${shatterAnim.piece.color === 'w' ? 'white-piece' : 'black-piece'}`}>{glyphs[shatterAnim.piece.color][shatterAnim.piece.kind]}</span></span>}
-              {piece && <PieceGlyph piece={piece} className={isMoving || isCastlingRook ? 'moving-piece' : isDropping ? 'dropping-piece' : undefined} style={moveStyle} />}{piece?.promoted && rules.pieceDrops && <small className="promoted-mark" aria-hidden="true">~</small>}{eligible && <span className="eligible-marker" aria-hidden="true" />}{possible && <span className={piece ? 'capture-target' : 'move-target'} />}{isDuckTarget && <span className="duck-target" aria-hidden="true" />}
+              {piece && <PieceGlyph piece={piece} className={isMoving || isCastlingRook ? 'moving-piece' : isDropping ? 'dropping-piece' : undefined} style={moveStyle} />}{piece?.promoted && rules.pieceDrops && <small className="promoted-mark" aria-hidden="true">~</small>}{eligible && <span className="eligible-marker" aria-hidden="true" />}
+              {isThreatened && <span className="threat-marker" aria-hidden="true" title="Can be eaten by opponent on the next move">!</span>}
+              {willBeExposed && <span className="exposed-marker" aria-hidden="true">Exposed</span>}
+              {possible && <>
+                <span className={`${piece ? 'capture-target' : 'move-target'} ${isDangerDestination ? (piece ? 'danger-capture-target' : 'danger-move-target') : ''}`} />
+                {hasUncovered && <span className="uncover-marker" aria-hidden="true" title={`Moving here exposes: ${danger!.uncoveredSquares.map(sq => `${pos.board[sq] ? names[pos.board[sq]!.kind] : 'piece'} on ${squareName(sq)}`).join(', ')}`}>⚠</span>}
+              </>}
+              {isDuckTarget && <span className="duck-target" aria-hidden="true" />}
               {display % 8 === 0 && <small className="rank">{8 - Math.floor(i / 8)}</small>}{display >= 56 && <small className="file">{'abcdefgh'[i % 8]}</small>}
             </button>;
           })}
         </div>
+        {showDangerWarnings && <div className="danger-legend" role="status">
+          <span className="danger-legend-badge">⚠ Threat warnings</span>
+          <span className="danger-legend-text">
+            {hoveredSquare !== null && moveDangersByTo.has(hoveredSquare) ? (() => {
+              const d = moveDangersByTo.get(hoveredSquare)!;
+              if (d.destinationThreatened && d.uncoveredSquares.length > 0) {
+                return <><strong>{squareName(hoveredSquare)}:</strong> Opponent can capture your piece here, and moving here exposes {d.uncoveredSquares.map(sq => `${pos.board[sq] ? names[pos.board[sq]!.kind] : 'piece'} on ${squareName(sq)}`).join(', ')} to capture!</>;
+              }
+              if (d.destinationThreatened) {
+                return <><strong>{squareName(hoveredSquare)}:</strong> Opponent can capture your piece on this square next move!</>;
+              }
+              if (d.uncoveredSquares.length > 0) {
+                return <><strong>{squareName(hoveredSquare)}:</strong> Moving here exposes {d.uncoveredSquares.map(sq => `${pos.board[sq] ? names[pos.board[sq]!.kind] : 'piece'} on ${squareName(sq)}`).join(', ')} to capture!</>;
+              }
+              return <><strong>{squareName(hoveredSquare)}:</strong> Safe destination square.</>;
+            })() : (selected !== null || selectedPocket !== null) ? (
+              <span>
+                <span className="legend-sample danger-dot-sample" /> Red spot: can be eaten
+                {' · '}
+                <span className="legend-sample uncover-sample">⚠</span> Exposes covered piece
+              </span>
+            ) : threatenedPiecesSet.size > 0 ? (
+              `${threatenedPiecesSet.size} of your pieces can be eaten by the opponent next move (marked with !)`
+            ) : (
+              'None of your pieces can currently be eaten by the opponent.'
+            )}
+          </span>
+        </div>}
         {showEligiblePieces && <p className="eligible-legend"><span aria-hidden="true" /> Marked pieces can move{moves.some(m => pos.board[m.to] || m.ep !== undefined) && (rules.forcedCapture || rules.goal === 'giveaway') ? ' · A capture is required' : ''}</p>}
         {aiError && <div className="error-message" role="alert">{aiError}<button onClick={() => { setAiError(''); setRetry(n => n + 1); }}>Retry AI</button></div>}
         <div className="board-toolbar"><div><button onClick={undo} disabled={history.length <= (!localGame && human === 'b' ? 2 : 1)}><RotateCcw size={15} /> {localGame ? 'Undo move' : 'Undo turn'}</button><button onClick={() => setFlipped(f => !f)}><RefreshCw size={15} /> Flip board</button></div><button onClick={() => setConfirmResign(true)} disabled={!!end || history.length === 1} aria-label="Resign game"><Flag size={15} /></button></div>
@@ -355,13 +427,18 @@ export default function Home() {
         <div className="custom-heading"><button className="custom-toggle" onClick={() => setExpanded(x => !x)} aria-expanded={expanded}><SlidersHorizontal size={16} /><span>Customize rules</span><span className="rule-count">{Object.keys(CLASSIC).filter(k => draft[k as keyof Rules] !== CLASSIC[k as keyof Rules]).length || Object.keys(CLASSIC).length} {JSON.stringify(draft) === JSON.stringify(CLASSIC) ? 'options' : 'changed'}</span>{expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</button></div>
         {expanded && <div className="rules-editor"><label className="field-label">Win condition</label><Choice label="Win condition" value={draft.goal} onChange={v => setDraft(d => ({ ...d, goal: v as Rules['goal'], ...(v === 'giveaway' ? { forcedCapture: true, castling: false, markEligiblePieces: true } : {}) }))} options={Object.entries(goals)} /><p className="rule-hint">{draft.goal === 'hill' ? 'Reach d4, e4, d5, or e5 with your king, or checkmate.' : draft.goal === 'giveaway' ? 'Captures are mandatory. Lose all your pieces or have no legal move to win. No check or castling.' : draft.goal === 'capture' ? 'Check is ignored. Capture the opposing king to win.' : draft.goal === 'annihilation' ? 'Capture every enemy piece to win. The king is an ordinary piece (no check or checkmate).' : 'Protect your king. Deliver checkmate to win.'}</p>
           <label className="field-label">Random starting position</label><Choice label="Random starting position" value={draft.randomStart} onChange={v => setDraft(d => ({ ...d, randomStart: v as Rules['randomStart'], ...(v !== 'off' ? { castling: false } : {}) }))} options={[['off', 'Off'], ['except-pawns', 'Except the pawns'], ['all', 'All']]} /><p className="rule-hint">{draft.randomStart === 'all' ? 'All 16 pieces and pawns are shuffled across both starting ranks. No castling.' : draft.randomStart === 'except-pawns' ? 'Shuffle both back ranks equally. Pawns stay on their usual ranks; no castling.' : 'Standard opening arrangement for both sides.'}</p>
-          {toggles.map(([key, title, hint]) => <div className="rule-row" key={key}><label htmlFor={`rule-${key}`}><strong>{title}</strong><small>{hint}</small></label><Switch id={`rule-${key}`} checked={key === 'castling' && draft.randomStart !== 'off' ? false : Boolean(draft[key])} disabled={(draft.goal === 'giveaway' && (key === 'forcedCapture' || key === 'castling')) || (draft.randomStart !== 'off' && key === 'castling')} onCheckedChange={v => setDraft(d => ({ ...d, [key]: v }))} /></div>)}
+          {toggles.map(([key, title, hint]) => <div className="rule-row" key={key}><label htmlFor={`rule-${key}`}><strong>{title}</strong><small>{hint}</small></label><Switch id={`rule-${key}`} checked={key === 'castling' && draft.randomStart !== 'off' ? false : Boolean(draft[key])} disabled={(draft.goal === 'giveaway' && (key === 'forcedCapture' || key === 'castling')) || (draft.randomStart !== 'off' && key === 'castling')} onCheckedChange={v => {
+            setDraft(d => ({ ...d, [key]: v }));
+            if (key === 'dangerWarnings' || key === 'markEligiblePieces') {
+              setRules(r => ({ ...r, [key]: v }));
+            }
+          }} /></div>)}
           <label className="field-label">Pawn promotion</label><Choice label="Pawn promotion" value={draft.promotion} onChange={v => setDraft(d => ({ ...d, promotion: v as Rules['promotion'] }))} options={ [['choice', 'Choose any piece'], ['q', 'Always queen'], ['n', 'Always knight']] } />
         </div>}
         <h3>Meet your opponent</h3><RadioGroup aria-label="Opponent" className="difficulty-group" value={localGame ? 'human' : difficulty} onValueChange={v => { workerRef.current?.terminate(); setLocalGame(v === 'human'); if (v !== 'human') setDifficulty(v as Difficulty); setSelected(null); setSelectedPocket(null); setPromotion([]); setAiError(''); }}>{(['easy', 'medium', 'hard', 'human'] as const).map((v, i) => <label key={v} className={`difficulty-choice ${(localGame ? 'human' : difficulty) === v ? 'active' : ''}`}><RadioGroupItem className="sr-only" value={v} /><span className="level-bars" aria-hidden="true">{v === 'human' ? <Users size={13} /> : [0,1,2].map(n => <i key={n} className={n <= i ? 'lit' : ''} />)}</span>{v[0].toUpperCase() + v.slice(1)}</label>)}</RadioGroup><p className="level-description">{localGame ? 'Two players, one board. Take turns on this device.' : levelCopy[difficulty]}</p>
         {!localGame && <div className="side-choice"><label className="field-label">Play as</label><Choice label="Play as" value={draftHuman} onChange={v => setDraftHuman(v as SideChoice)} options={ [['w', 'White'], ['b', 'Black'], ['random', 'Random']] } /></div>}
         <button className="primary" onClick={requestNew}><span>♟</span>{changed ? 'Apply rules & start game' : 'New game'}</button><p className="setup-note">{changed ? 'Your changes take effect in a new game.' : 'New board. Fresh possibilities.'}</p>
-        <div className="active-rules"><span>ON THIS BOARD</span><p>{goals[rules.goal]}{rules.duckChess ? ' · Duck chess' : ''}{rules.pieceDrops ? ' · Piece drops' : ''}{rules.atomic ? ' · Atomic chess' : ''}{rules.randomStart !== 'off' ? ` · Random start (${rules.randomStart === 'all' ? 'all pieces' : 'except pawns'}) · No castling` : ''}{rules.forcedCapture && rules.goal !== 'giveaway' ? ' · Forced captures' : ''}{rules.superKnights ? ' · Super knights' : ''}{rules.backwardCapture ? ' · Backward captures' : ''}</p></div>
+        <div className="active-rules"><span>ON THIS BOARD</span><p>{goals[rules.goal]}{rules.duckChess ? ' · Duck chess' : ''}{rules.pieceDrops ? ' · Piece drops' : ''}{rules.atomic ? ' · Atomic chess' : ''}{rules.dangerWarnings ? ' · Threat warnings' : ''}{rules.randomStart !== 'off' ? ` · Random start (${rules.randomStart === 'all' ? 'all pieces' : 'except pawns'}) · No castling` : ''}{rules.forcedCapture && rules.goal !== 'giveaway' ? ' · Forced captures' : ''}{rules.superKnights ? ' · Super knights' : ''}{rules.backwardCapture ? ' · Backward captures' : ''}</p></div>
       </aside>
     </div>
     <footer><span>CHESS SANDBOX / EXPERIMENT. PLAY. REPEAT.</span><span>{localGame ? 'Your rules. Shared board.' : 'Your rules. Same rules for the AI.'}</span></footer>

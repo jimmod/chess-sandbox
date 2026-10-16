@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { initialPosition, legalMoves, applyMove, CLASSIC, outcome, inCheck, squareIndex, PRESETS, emptyPockets, notation, legalDuckSquares } from '../lib/chess/engine.ts';
-import type { Position, Rules } from '../lib/chess/engine.ts';
+import { initialPosition, legalMoves, applyMove, CLASSIC, outcome, inCheck, squareIndex, PRESETS, emptyPockets, notation, legalDuckSquares, threatenedPieces, analyzeMoveDanger } from '../lib/chess/engine.ts';
+import type { Position, Rules, Move } from '../lib/chess/engine.ts';
 import { chooseMove } from '../lib/chess/ai.ts';
 function play(p: Position, from: string, to: string, r: Rules = CLASSIC) { const m = legalMoves(p, r).find(m => m.from === squareIndex(from) && m.to === squareIndex(to)); assert.ok(m, `${from}-${to}`); return applyMove(p, m); }
 function perft(p: Position, depth: number): number { if (!depth) return 1; return legalMoves(p, CLASSIC).reduce((n, m) => n + perft(applyMove(p, m), depth - 1), 0); }
@@ -416,6 +416,86 @@ test('atomic chess: detonating enemy king wins immediately and AI executes it', 
 
   const afterMove = applyMove(p, aiMove, atomicRules);
   assert.deepEqual(outcome(afterMove, atomicRules), { winner: 'w', reason: 'King exploded' });
+});
+
+test('threatenedPieces identifies pieces that can be eaten on opponent next move, respecting pins', () => {
+  const p = bare();
+  p.turn = 'w';
+  p.board[squareIndex('e1')] = { color: 'w', kind: 'k' };
+  p.board[squareIndex('e8')] = { color: 'b', kind: 'k' };
+  p.board[squareIndex('f3')] = { color: 'w', kind: 'n' };
+  p.board[squareIndex('e4')] = { color: 'w', kind: 'p' };
+  p.board[squareIndex('d5')] = { color: 'b', kind: 'p' }; // d5 attacks e4
+  p.board[squareIndex('g4')] = { color: 'b', kind: 'b' }; // g4 attacks f3
+
+  const threatened = threatenedPieces(p, CLASSIC, 'w');
+  assert.ok(threatened.has(squareIndex('e4'))); // e4 pawn can be eaten
+  assert.ok(threatened.has(squareIndex('f3'))); // f3 knight can be eaten
+  assert.equal(threatened.has(squareIndex('e1')), false); // e1 king is safe
+
+  // Now create a pinned piece situation
+  const p2 = bare();
+  p2.turn = 'w';
+  p2.board[60] = { color: 'w', kind: 'k' }; // e1 king
+  p2.board[3] = { color: 'b', kind: 'k' };  // d8 king
+  p2.board[59] = { color: 'w', kind: 'r' }; // d1 rook (pins d5 rook to d8 king!)
+  p2.board[35] = { color: 'b', kind: 'r' }; // d5 rook
+  p2.board[34] = { color: 'w', kind: 'n' }; // c5 knight (attacked by d5 rook, but d5 rook is pinned!)
+
+  const threatened2 = threatenedPieces(p2, CLASSIC, 'w');
+  // Pinned rook on d5 cannot legally leave d-file to capture c5 knight!
+  assert.equal(threatened2.has(34), false);
+  // Pinned rook CAN legally capture d1 rook along the pin line:
+  assert.ok(threatened2.has(59));
+});
+
+test('analyzeMoveDanger identifies dangerous destination squares and uncovered pieces', () => {
+  const p = bare();
+  p.turn = 'w';
+  p.board[62] = { color: 'w', kind: 'k' }; // g1 king
+  p.board[3] = { color: 'b', kind: 'k' };  // d8 king
+  p.board[59] = { color: 'w', kind: 'q' }; // d1 queen
+  p.board[35] = { color: 'w', kind: 'n' }; // d4 knight (covers d1 queen from d8 rook!)
+  p.board[19] = { color: 'b', kind: 'r' }; // d6 rook (attacks d4 knight along d-file)
+  p.board[21] = { color: 'b', kind: 'p' }; // f6 pawn (attacks e5 square!)
+
+  const currentlyThreatened = threatenedPieces(p, CLASSIC, 'w');
+  assert.ok(currentlyThreatened.has(35)); // d4 knight is currently threatened
+  assert.equal(currentlyThreatened.has(59), false); // d1 queen is covered / safe
+
+  // Move 1: Knight moves to e5 (destination is attacked by f6 pawn, and moves away from d-file exposing d1 queen!)
+  const move1: Move = { from: 35, to: 28 }; // d4 to e5
+  const danger1 = analyzeMoveDanger(p, move1, CLASSIC, currentlyThreatened);
+  assert.equal(danger1.destinationThreatened, true); // e5 can be captured by f6 pawn!
+  assert.deepEqual(danger1.uncoveredSquares, [59]);  // d1 queen was covered and is now exposed!
+
+  // Move 2: Knight moves to b5 (destination is safe from attack, but still uncovers d1 queen!)
+  const move2: Move = { from: 35, to: 25 }; // d4 to b5
+  const danger2 = analyzeMoveDanger(p, move2, CLASSIC, currentlyThreatened);
+  assert.equal(danger2.destinationThreatened, false); // b5 is safe
+  assert.deepEqual(danger2.uncoveredSquares, [59]);   // d1 queen is still uncovered!
+
+  // Move 3: Instead of knight moving, replace with rook on d3 moving to d2 (stays on d-file, keeps queen covered)
+  p.board[35] = null;
+  p.board[43] = { color: 'w', kind: 'r' }; // d3 rook
+  const move3: Move = { from: 43, to: 51 }; // d3 to d2
+  const danger3 = analyzeMoveDanger(p, move3, CLASSIC);
+  assert.equal(danger3.uncoveredSquares.includes(59), false); // d1 queen is STILL covered by d2 rook!
+});
+
+test('analyzeMoveDanger recognizes atomic explosion threats', () => {
+  const atomicRules = PRESETS.find(p => p.id === 'atomic')!.rules;
+  const p2 = bare();
+  p2.turn = 'w';
+  p2.board[60] = { color: 'w', kind: 'k' };
+  p2.board[4] = { color: 'b', kind: 'k' };
+  p2.board[52] = { color: 'w', kind: 'q' }; // e2 queen
+  p2.board[44] = { color: 'w', kind: 'p' }; // e3 pawn
+  p2.board[36] = { color: 'b', kind: 'r' }; // e4 rook (attacks e3 pawn)
+  // If e4 rook captures e3 pawn, in atomic chess adjacent non-pawns explode!
+  // White queen on e2 is adjacent to e3, so in atomic chess White queen is threatened by blast!
+  const threatened = threatenedPieces(p2, atomicRules, 'w');
+  assert.ok(threatened.has(52)); // e2 queen is in blast radius of e3 capture!
 });
 
 
