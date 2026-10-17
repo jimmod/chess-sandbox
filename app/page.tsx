@@ -22,7 +22,7 @@ const goals = { checkmate: 'Checkmate the king', capture: 'Capture the king', hi
 type SideChoice = Color | 'random';
 type Snapshot = { position: Position; move?: Move; label?: string };
 function PieceGlyph({ piece, className, style }: { piece: Piece; className?: string; style?: React.CSSProperties }) {
-  return <span aria-hidden="true" className={`${piece.color === 'w' ? 'white-piece' : 'black-piece'}${className ? ` ${className}` : ''}`} style={style}>{glyphs[piece.color][piece.kind]}</span>;
+  return <span aria-hidden="true" className={`piece-glyph ${piece.color === 'w' ? 'white-piece' : 'black-piece'}${className ? ` ${className}` : ''}`} style={style}>{glyphs[piece.color][piece.kind]}</span>;
 }
 
 interface MoveAnim {
