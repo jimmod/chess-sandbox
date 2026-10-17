@@ -1,7 +1,90 @@
 import { applyMove, legalMoves, outcome, POCKET_KINDS, attacked, opposite, candidateDuckSquares, legalDuckSquares, notation } from './engine.ts';
 import type { Position, Rules, Move } from './engine.ts';
+
 export type Difficulty = 'easy' | 'medium' | 'hard';
 const values = { p: 100, n: 320, b: 335, r: 500, q: 900, k: 20000 };
+
+// Standard chess piece-square tables (PST) indexed [0..63] where row 0 is Rank 8 (enemy back rank for White),
+// row 7 is Rank 1 (friendly back rank for White). Mirrored symmetrically for Black.
+const PAWN_PST = [
+    0,   0,   0,   0,   0,   0,   0,   0, // rank 8 (promotion)
+   50,  50,  50,  50,  50,  50,  50,  50, // rank 7
+   10,  10,  20,  30,  30,  20,  10,  10, // rank 6
+    5,   5,  15,  28,  28,  15,   5,   5, // rank 5
+    0,   0,  25,  30,  30,   0,   0,   0, // rank 4 (c4, d4, e4 central control)
+    5,  -5, -10,   5,   5, -10,  -5,   5, // rank 3
+    0,   5,   5, -15, -15,   5,   5,   0, // rank 2 (unmoved d2/e2 block bishops)
+    0,   0,   0,   0,   0,   0,   0,   0  // rank 1
+];
+
+const KNIGHT_PST = [
+  -50, -40, -30, -30, -30, -30, -40, -50,
+  -40, -20,   0,   5,   5,   0, -20, -40,
+  -30,   5,  15,  20,  20,  15,   5, -30,
+  -30,   5,  20,  25,  25,  20,   5, -30,
+  -30,   5,  20,  25,  25,  20,   5, -30,
+  -35,   5,  15,  20,  20,  15,   5, -35, // rim squares a3, h3 are penalized
+  -35, -10,   0,   5,   5,   0, -10, -35,
+  -50, -30, -20, -20, -20, -20, -30, -50
+];
+
+const BISHOP_PST = [
+  -20, -10, -10, -10, -10, -10, -10, -20,
+  -10,   5,   0,   0,   0,   0,   5, -10,
+  -10,  10,  10,  15,  15,  10,  10, -10,
+  -10,   5,  12,  15,  15,  12,   5, -10,
+  -10,   5,  12,  15,  15,  12,   5, -10,
+  -10,   5,   5,  10,  10,   5,   5, -10,
+  -10,   5,   0,   0,   0,   0,   5, -10,
+  -20, -10, -10, -10, -10, -10, -10, -20
+];
+
+const ROOK_PST = [
+    0,   0,   0,   5,   5,   0,   0,   0,
+   15,  15,  15,  20,  20,  15,  15,  15, // 7th rank bonus
+    0,   0,   0,   5,   5,   0,   0,   0,
+    0,   0,   0,   5,   5,   0,   0,   0,
+    0,   0,   0,   5,   5,   0,   0,   0,
+    0,   0,   0,   5,   5,   0,   0,   0,
+    0,   0,   0,   5,   5,   0,   0,   0,
+    0,   0,   5,  10,  10,   5,   0,   0
+];
+
+const QUEEN_PST = [
+  -10, -10, -10,  -5,  -5, -10, -10, -10,
+  -10,   0,   5,   0,   0,   0,   0, -10,
+  -10,   5,   5,   5,   5,   5,   0, -10,
+    0,   0,   5,   5,   5,   5,   0,  -5,
+   -5,   0,   5,   5,   5,   5,   0,  -5,
+  -10,   0,   5,   5,   5,   5,   0, -10,
+  -10,   0,   0,   0,   0,   0,   0, -10,
+  -10, -10, -10,  -5,  -5, -10, -10, -10
+];
+
+const KING_PST = [
+  -30, -40, -40, -50, -50, -40, -40, -30,
+  -30, -40, -40, -50, -50, -40, -40, -30,
+  -30, -40, -40, -50, -50, -40, -40, -30,
+  -30, -40, -40, -50, -50, -40, -40, -30,
+  -20, -30, -30, -40, -40, -30, -30, -20,
+  -10, -20, -20, -20, -20, -20, -20, -10,
+   10,  15,   0, -10, -10,   0,  15,  10,
+   15,  25,  10, -10,   0, -10,  25,  15 // castled kingside/queenside safety
+];
+
+function getPstBonus(kind: string, color: 'w' | 'b', sq: number): number {
+  const row = Math.floor(sq / 8);
+  const col = sq % 8;
+  const tSq = color === 'w' ? row * 8 + col : (7 - row) * 8 + col;
+  if (kind === 'p') return PAWN_PST[tSq];
+  if (kind === 'n') return KNIGHT_PST[tSq];
+  if (kind === 'b') return BISHOP_PST[tSq];
+  if (kind === 'r') return ROOK_PST[tSq];
+  if (kind === 'q') return QUEEN_PST[tSq];
+  if (kind === 'k') return KING_PST[tSq];
+  return 0;
+}
+
 export function evaluate(pos: Position, rules: Rules): number {
   let score = 0;
   pos.board.forEach((p, i) => {
@@ -17,13 +100,28 @@ export function evaluate(pos: Position, rules: Rules): number {
       if (p.kind === 'n' || p.kind === 'b') value += center * 10;
       if (p.kind === 'n' && rules.superKnights) value += 100;
     } else {
-      if (p.kind === 'p') value += (p.color === 'w' ? 6 - row : row - 1) * 9 + center * 3 + (rules.atomic ? 40 : 0);
-      if (p.kind === 'n' || p.kind === 'b') value += center * 10;
+      value += getPstBonus(p.kind, p.color, i);
       if (p.kind === 'n' && rules.superKnights) value += 100;
       if (p.kind === 'k' && rules.goal === 'hill') value += center * 40;
     }
     score += p.color === pos.turn ? value : -value;
   });
+
+  // Castling safety bonus in standard checkmate goal
+  if (rules.goal === 'checkmate') {
+    if (pos.turn === 'w') {
+      if (pos.rights.includes('K')) score += 15;
+      if (pos.rights.includes('Q')) score += 10;
+      if (pos.rights.includes('k')) score -= 15;
+      if (pos.rights.includes('q')) score -= 10;
+    } else {
+      if (pos.rights.includes('k')) score += 15;
+      if (pos.rights.includes('q')) score += 10;
+      if (pos.rights.includes('K')) score -= 15;
+      if (pos.rights.includes('Q')) score -= 10;
+    }
+  }
+
   if (rules.atomic) {
     const myKing = pos.board.some(p => p?.color === pos.turn && p.kind === 'k');
     const oppKing = pos.board.some(p => p?.color === opposite(pos.turn) && p.kind === 'k');
@@ -41,6 +139,69 @@ export function evaluate(pos: Position, rules: Rules): number {
   }
   return score;
 }
+
+export function getSearchDuckMoves(p: Position, rules: Rules, isRoot: boolean): Move[] {
+  const ms = legalMoves(p, rules);
+  if (!rules.duckChess) return ms;
+  const kingCapture = ms.find(m => p.board[m.to]?.kind === 'k');
+  if (kingCapture) return [kingCapture];
+  const res: Move[] = [];
+  for (const m of ms) {
+    const nextPos = applyMove(p, m, rules);
+    const candidates = candidateDuckSquares(nextPos, p.duck);
+    const count = candidates.length ? (isRoot ? Math.min(candidates.length, 2) : 1) : 0;
+    if (count === 0) res.push(m);
+    else for (let i = 0; i < count; i++) res.push({ ...m, duck: candidates[i] });
+  }
+  return res;
+}
+
+export function movePriority(p: Position, m: Move, rules: Rules): number {
+  if (rules.atomic) {
+    const next = applyMove(p, m, rules);
+    if (!next.board.some(pc => pc?.color === opposite(p.turn) && pc.kind === 'k')) return 100000;
+  }
+  if (rules.goal !== 'annihilation' && p.board[m.to]?.kind === 'k') return 100000;
+  if (m.drop) return 40 + (7 - Math.abs(3.5 - Math.floor(m.to / 8)) - Math.abs(3.5 - m.to % 8)) * 5;
+  const target = p.board[m.to] || (m.ep !== undefined ? p.board[m.ep] : null);
+  const targetVal = target ? (rules.goal === 'annihilation' && target.kind === 'k' ? 380 : values[target.kind]) : 0;
+  const fromPiece = p.board[m.from];
+  const fromVal = fromPiece ? (rules.goal === 'annihilation' && fromPiece.kind === 'k' ? 380 : values[fromPiece.kind]) : 0;
+  return (target ? targetVal * 10 - fromVal : 0) + (m.promotion ? values[m.promotion] : 0) + (m.duck !== undefined ? 5 : 0);
+}
+
+export function orderMoves(p: Position, ms: Move[], rules: Rules): Move[] {
+  return ms.slice().sort((a, b) => movePriority(p, b, rules) - movePriority(p, a, rules));
+}
+
+export function searchMinimax(
+  p: Position,
+  rules: Rules,
+  depth: number,
+  alpha: number,
+  beta: number,
+  ply: number,
+  deadline?: number,
+  counter?: { nodes: number }
+): number {
+  if (deadline && counter && (++counter.nodes & 15) === 0 && Date.now() >= deadline) {
+    throw new Error('timeout');
+  }
+  const ms = getSearchDuckMoves(p, rules, false);
+  const end = outcome(p, rules, ms);
+  if (end) return end.winner === null ? 0 : end.winner === p.turn ? 100000 - ply : -100000 + ply;
+  if (depth === 0) return evaluate(p, rules);
+  let bestScore = -Infinity;
+  const sorted = orderMoves(p, ms, rules);
+  for (const m of sorted) {
+    const score = -searchMinimax(applyMove(p, m, rules), rules, depth - 1, -beta, -alpha, ply + 1, deadline, counter);
+    bestScore = Math.max(bestScore, score);
+    alpha = Math.max(alpha, score);
+    if (alpha >= beta) break;
+  }
+  return bestScore;
+}
+
 export function chooseMove(pos: Position, rules: Rules, difficulty: Difficulty, random = Math.random): Move | null {
   const rawMoves = legalMoves(pos, rules); if (!rawMoves.length || outcome(pos, rules, rawMoves)) return null;
 
@@ -53,64 +214,20 @@ export function chooseMove(pos: Position, rules: Rules, difficulty: Difficulty, 
     if (atomicWin) return atomicWin;
   }
 
-  function getDuckMoves(p: Position, isRoot: boolean): Move[] {
-    const ms = legalMoves(p, rules);
-    if (!rules.duckChess) return ms;
-    const kingCapture = ms.find(m => p.board[m.to]?.kind === 'k');
-    if (kingCapture) return [kingCapture];
-    const res: Move[] = [];
-    for (const m of ms) {
-      const nextPos = applyMove(p, m, rules);
-      const candidates = candidateDuckSquares(nextPos, p.duck);
-      const count = candidates.length ? (isRoot ? Math.min(candidates.length, 2) : 1) : 0;
-      if (count === 0) res.push(m);
-      else for (let i = 0; i < count; i++) res.push({ ...m, duck: candidates[i] });
-    }
-    return res;
-  }
-
-  const moves = getDuckMoves(pos, true);
-
+  const moves = getSearchDuckMoves(pos, rules, true);
   const deadline = Date.now() + ({ easy: 120, medium: 500, hard: 1600 }[difficulty]);
   const maxDepth = { easy: 1, medium: 3, hard: 5 }[difficulty];
-  let nodes = 0;
-  function ordered(p: Position, ms: Move[]) {
-    return ms.slice().sort((a, b) => priority(p, b) - priority(p, a));
-  }
-  function priority(p: Position, m: Move) {
-    if (rules.atomic) {
-      const next = applyMove(p, m, rules);
-      if (!next.board.some(pc => pc?.color === opposite(p.turn) && pc.kind === 'k')) return 100000;
-    }
-    if (rules.goal !== 'annihilation' && p.board[m.to]?.kind === 'k') return 100000;
-    if (m.drop) return 40 + (7 - Math.abs(3.5 - Math.floor(m.to / 8)) - Math.abs(3.5 - m.to % 8)) * 5;
-    const target = p.board[m.to] || (m.ep !== undefined ? p.board[m.ep] : null);
-    const targetVal = target ? (rules.goal === 'annihilation' && target.kind === 'k' ? 380 : values[target.kind]) : 0;
-    const fromPiece = p.board[m.from];
-    const fromVal = fromPiece ? (rules.goal === 'annihilation' && fromPiece.kind === 'k' ? 380 : values[fromPiece.kind]) : 0;
-    return (target ? targetVal * 10 - fromVal : 0) + (m.promotion ? values[m.promotion] : 0) + (m.duck !== undefined ? 5 : 0);
-  }
-  function search(p: Position, depth: number, alpha: number, beta: number, ply: number): number {
-    if ((++nodes & 15) === 0 && Date.now() >= deadline) throw new Error('timeout');
-    const ms = getDuckMoves(p, false), end = outcome(p, rules, ms);
-    if (end) return end.winner === null ? 0 : end.winner === p.turn ? 100000 - ply : -100000 + ply;
-    if (depth === 0) return evaluate(p, rules);
-    let bestScore = -Infinity;
-    for (const m of ordered(p, ms)) {
-      const score = -search(applyMove(p, m, rules), depth - 1, -beta, -alpha, ply + 1);
-      bestScore = Math.max(bestScore, score); alpha = Math.max(alpha, score); if (alpha >= beta) break;
-    }
-    return bestScore;
-  }
+  const counter = { nodes: 0 };
+
   let best = moves[0];
   let moveScores: { move: Move; score: number }[] = moves.map(m => ({ move: m, score: 0 }));
   for (let depth = 1; depth <= maxDepth; depth++) {
     let iterationBest = best, score = -Infinity;
     const depthScores: { move: Move; score: number }[] = [];
     try {
-      const sorted = ordered(pos, moves); sorted.sort((a, b) => Number(b === best) - Number(a === best));
+      const sorted = orderMoves(pos, moves, rules); sorted.sort((a, b) => Number(b === best) - Number(a === best));
       for (const m of sorted) {
-        const value = -search(applyMove(pos, m, rules), depth - 1, -Infinity, -score, 1);
+        const value = -searchMinimax(applyMove(pos, m, rules), rules, depth - 1, -Infinity, -score, 1, deadline, counter);
         depthScores.push({ move: m, score: value });
         if (value > score) { score = value; iterationBest = m; }
       }
@@ -168,6 +285,10 @@ export function evaluatePositionMoves(pos: Position, rules: Rules): EvaluatedMov
     return { ...m, duck: sqs[0] ?? legalDuckSquares(p, after.board)[0] };
   }
 
+  // Adaptive reply depth: In endgames or positions with fewer candidate moves, search deeper (depth 3 on replies = 4 plies total).
+  // In complex opening/middlegames, depth 2 on replies = 3 plies total, keeping calculation snappy under ~40ms.
+  const replyDepth = moves.length <= 15 ? 3 : 2;
+
   const rawScored: { move: Move; score: number }[] = [];
 
   for (const rawMove of moves) {
@@ -183,8 +304,7 @@ export function evaluatePositionMoves(pos: Position, rules: Rules): EvaluatedMov
       continue;
     }
 
-    const oppRawMoves = legalMoves(nextPos, rules);
-    const end = outcome(nextPos, rules, oppRawMoves);
+    const end = outcome(nextPos, rules);
     if (end) {
       if (end.winner === pos.turn) rawScored.push({ move: m, score: 100000 });
       else if (end.winner === null) rawScored.push({ move: m, score: 0 });
@@ -192,36 +312,8 @@ export function evaluatePositionMoves(pos: Position, rules: Rules): EvaluatedMov
       continue;
     }
 
-    let worstCaseForUs = Infinity;
-    for (const omRaw of oppRawMoves) {
-      const om = completeDuckMove(nextPos, omRaw);
-      if (rules.duckChess && nextPos.board[om.to]?.kind === 'k') {
-        worstCaseForUs = -100000;
-        break;
-      }
-      const oppAfter = applyMove(nextPos, om, rules);
-      if (rules.atomic && !oppAfter.board.some(p => p?.color === pos.turn && p.kind === 'k')) {
-        worstCaseForUs = -100000;
-        break;
-      }
-      const oppEnd = outcome(oppAfter, rules);
-      let replyScore: number;
-      if (oppEnd) {
-        if (oppEnd.winner === opposite(pos.turn)) replyScore = -100000;
-        else if (oppEnd.winner === null) replyScore = 0;
-        else replyScore = 100000;
-      } else {
-        replyScore = evaluate(oppAfter, rules);
-      }
-      if (replyScore < worstCaseForUs) {
-        worstCaseForUs = replyScore;
-      }
-    }
-
-    rawScored.push({
-      move: m,
-      score: worstCaseForUs === Infinity ? evaluate(nextPos, rules) : worstCaseForUs,
-    });
+    const score = -searchMinimax(nextPos, rules, replyDepth, -Infinity, Infinity, 1);
+    rawScored.push({ move: m, score });
   }
 
   rawScored.sort((a, b) => b.score - a.score);
@@ -239,8 +331,10 @@ export function evaluatePositionMoves(pos: Position, rules: Rules): EvaluatedMov
     else quality = 'blunder';
 
     let formattedScore: string;
-    if (item.score >= 90000) formattedScore = '+M1';
-    else if (item.score <= -90000) formattedScore = '-M1';
+    if (item.score >= 99000) formattedScore = '+M1';
+    else if (item.score >= 90000) formattedScore = '+M2';
+    else if (item.score <= -99000) formattedScore = '-M1';
+    else if (item.score <= -90000) formattedScore = '-M2';
     else {
       const val = (item.score / 100).toFixed(1);
       formattedScore = item.score > 0 ? `+${val}` : val === '-0.0' ? '0.0' : val;
@@ -257,4 +351,5 @@ export function evaluatePositionMoves(pos: Position, rules: Rules): EvaluatedMov
     };
   });
 }
+
 

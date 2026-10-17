@@ -521,11 +521,17 @@ test('evaluatePositionMoves returns sorted moves, ranks top 5, detects checkmate
     assert.ok(evals[i].score >= evals[i + 1].score, `Rank ${evals[i].rank} score ${evals[i].score} must be >= rank ${evals[i + 1].rank} score ${evals[i + 1].score}`);
   }
 
-  // Verify top 5 flags
+  // Verify top 5 flags and classical opening quality
   const topFive = evals.filter(e => e.isTopFive);
   assert.equal(topFive.length, 5);
   assert.equal(evals[0].rank, 1);
   assert.equal(evals[0].quality, 'best');
+  const topFiveLabels = topFive.map(e => e.label);
+  assert.ok(topFiveLabels.includes('e4'), 'Top 5 opening moves should include e4');
+  assert.ok(topFiveLabels.includes('d4'), 'Top 5 opening moves should include d4');
+  assert.ok(!topFiveLabels.includes('a4'), 'Flank move a4 should not be in top 5');
+  assert.ok(!topFiveLabels.includes('h4'), 'Flank move h4 should not be in top 5');
+  assert.ok(!topFiveLabels.includes('g4'), 'Flank move g4 should not be in top 5');
 
   // 2. Immediate checkmate position: Black delivers Fool's mate with Qh4#
   let matePos = initialPosition();
