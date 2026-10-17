@@ -279,7 +279,215 @@
   .square > span.danger-move-target,
   .square > span.danger-capture-target,
   .uncover-marker,
-  .square.will-be-exposed {
+  .square.will-be-exposed,
+  .top-move-piece-badge.rank-1-badge {
     animation: none !important;
   }
+}
+
+/* ==========================================================================
+   Coach & Move Scoring Assistance Rules
+   ========================================================================== */
+.top-move-piece-badge {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  z-index: 5;
+  font-size: 0.625rem;
+  font-weight: 800;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.88);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  backdrop-filter: blur(2px);
+}
+.top-move-piece-badge.rank-1-badge {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.95), rgba(180, 83, 9, 0.95));
+  color: #ffffff;
+  border-color: #fde68a;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.6), 0 2px 4px rgba(0, 0, 0, 0.3);
+  animation: pulse-gold-glow 2s infinite ease-in-out;
+}
+@keyframes pulse-gold-glow {
+  0%, 100% { box-shadow: 0 0 6px rgba(245, 158, 11, 0.5); }
+  50% { box-shadow: 0 0 12px rgba(245, 158, 11, 0.9), 0 0 4px #fde68a; }
+}
+
+.eval-badge-container {
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  z-index: 6;
+  pointer-events: none;
+}
+.eval-rank-tag {
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1;
+  padding: 1.5px 3.5px;
+  border-radius: 3px;
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+.eval-rank-tag.rank-1 {
+  background: #d97706;
+  border: 1px solid #fde68a;
+}
+.eval-rank-tag.rank-2 {
+  background: #059669;
+  border: 1px solid #6ee7b7;
+}
+.eval-rank-tag.rank-3 {
+  background: #0284c7;
+  border: 1px solid #7dd3fc;
+}
+.eval-rank-tag.rank-4,
+.eval-rank-tag.rank-5 {
+  background: #475569;
+  border: 1px solid #94a3b8;
+}
+
+.eval-score-tag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.58rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 1.5px 3.5px;
+  border-radius: 3px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid currentColor;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.quality-best {
+  color: #34d399 !important;
+}
+.quality-excellent {
+  color: #6ee7b7 !important;
+}
+.quality-good {
+  color: #93c5fd !important;
+}
+.quality-inaccuracy {
+  color: #fde047 !important;
+}
+.quality-mistake {
+  color: #fb923c !important;
+}
+.quality-blunder {
+  color: #f87171 !important;
+}
+
+/* Coach Top 5 Moves Bar */
+.coach-moves-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(6px);
+}
+.coach-moves-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.coach-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 7px;
+  border-radius: 4px;
+}
+.coach-subtitle {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  line-height: 1.3;
+}
+.coach-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.coach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  user-select: none;
+}
+.coach-chip:hover {
+  background: rgba(51, 65, 85, 0.9);
+  border-color: rgba(99, 102, 241, 0.6);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+}
+.coach-chip.active {
+  background: rgba(99, 102, 241, 0.25);
+  border-color: #818cf8;
+  box-shadow: 0 0 0 1px #818cf8, 0 3px 8px rgba(99, 102, 241, 0.3);
+}
+.coach-chip.rank-1 {
+  border-color: rgba(245, 158, 11, 0.5);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(30, 41, 59, 0.75));
+}
+.coach-chip.rank-1:hover {
+  border-color: #fbbf24;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+}
+.chip-rank {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fbbf24;
+}
+.chip-label {
+  font-family: inherit;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+.chip-score {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(15, 23, 42, 0.7);
+}
+.quality-label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(15, 23, 42, 0.6);
+}
+.preset-learning-icon {
+  color: #818cf8;
 }

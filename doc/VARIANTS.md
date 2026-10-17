@@ -8,11 +8,12 @@ Both human move validation and AI search share the pure rules engine in [lib/che
 
 ## Presets Overview
 
-Chess Sandbox ships with eight built-in presets. Each preset configures the 13 rule switches and provides descriptive explanations in the UI:
+Chess Sandbox ships with nine built-in presets. Each preset configures the 15 rule switches and provides descriptive explanations in the UI:
 
 | Preset | Icon | Key Rules / Mechanics | Primary Goal |
 | --- | :---: | --- | --- |
 | **Classic** | ♔ | Standard FIDE chess rules, castling, en passant, pawn double-step | `checkmate` |
+| **Learning Mode** | 🎓 | Threat warnings, top 5 move recommendations, move scores, marked pieces | `checkmate` |
 | **Duck Chess** | 🦆 | Neutral Duck blocker, 2-phase move (piece + duck), capture the king | `capture` |
 | **Crazyhouse** | ♜ | Captured pieces enter reserves; drops allowed on empty squares | `checkmate` |
 | **Atomic Chess** | 💥 | Captures cause 3x3 explosions destroying non-pawns; connected kings | `checkmate` / King blast |
@@ -34,7 +35,16 @@ Chess Sandbox ships with eight built-in presets. Each preset configures the 13 r
   * Pawn promotion to Queen, Rook, Bishop, or Knight (`promotion: 'choice'`).
 * **Draw Conditions**: Stalemate, threefold repetition (incorporating castling rights and en passant availability), 50-move rule, and classic insufficient material (bare kings, king + bishop vs king, king + knight vs king, or same-color bishops).
 
-### 2. Duck Chess
+### 2. Learning Mode (Beginner Tutor & Coach)
+* **Goal**: `checkmate`
+* **Rules**: Standard FIDE rules with real-time coaching assistance enabled: `dangerWarnings: true`, `moveScoring: true`, and `markEligiblePieces: true`.
+* **Core Mechanics**:
+  * **Top 5 Move Recommendations**: Automatically calculates and ranks the top 5 moves for the position. Interactive coach chips allow the player to select any of the top 5 moves with a single click.
+  * **Move Scoring**: Evaluates candidate moves via depth-2 minimax search, displaying pawn-unit scores (e.g., `+1.4`, `-0.8`, `+M1`) and quality ratings (`Best`, `Excellent`, `Good`, `Inaccuracy`, `Mistake`, `Blunder`).
+  * **Threat Warnings**: Flags friendly pieces under immediate capture threat by the opponent with a `!` badge. Warns when selecting a move destination that enters enemy fire or vacates cover and uncovers another friendly piece (`⚠`).
+  * **Marked Pieces**: Visually indicates all pieces possessing legal moves.
+
+### 3. Duck Chess
 * **Goal**: `capture` (no check or checkmate; kings can be captured directly).
 * **Core Mechanics**:
   * A neutral Duck (`🦆`) occupies a single square on the board (`Position.duck`).
@@ -45,7 +55,7 @@ Chess Sandbox ships with eight built-in presets. Each preset configures the 13 r
   * Castling through or to the Duck is forbidden.
 * **Notation**: Duck placements append `@<square>` to the standard move notation (e.g., `e4@d5`, `Nf3@e5`).
 
-### 3. Crazyhouse
+### 4. Crazyhouse
 * **Goal**: `checkmate`
 * **Core Mechanics**:
   * **Reserve Pockets**: Each player has a pocket of captured pieces (`Position.pockets`).
@@ -57,7 +67,7 @@ Chess Sandbox ships with eight built-in presets. Each preset configures the 13 r
 * **Notation**: Drops use piece kind and target square with an `@` symbol (e.g., `N@e4`, `Q@g7#`, `P@d5`).
 * **Draw Rules**: 50-move rule and insufficient material draws are disabled when piece drops are active.
 
-### 4. Atomic Chess
+### 5. Atomic Chess
 * **Goal**: `checkmate` or detonate the enemy King.
 * **Core Mechanics**:
   * **Explosions on Capture**: Any capture causes an immediate detonation centered on the destination square:
@@ -70,7 +80,7 @@ Chess Sandbox ships with eight built-in presets. Each preset configures the 13 r
     * **Connected Kings**: When two kings are on adjacent squares ("touching"), neither king can be in check from any piece, because any capture would explode both kings.
     * Detonating the opponent's king results in an immediate win (`lastExplosion` records detonated squares).
 
-### 5. Total Annihilation
+### 6. Total Annihilation
 * **Goal**: `annihilation`
 * **Core Mechanics**:
   * **The King is Just a Soldier**: Royal safety is completely disabled. Check, checkmate, and stalemate do not exist.
@@ -79,13 +89,13 @@ Chess Sandbox ships with eight built-in presets. Each preset configures the 13 r
   * **Victory Condition**: A player wins when all opposing pieces (both on the board and in reserve pockets) are eliminated.
   * **Stalemate Defeat**: If a player still has pieces remaining but has no legal moves left on their turn, they lose immediately.
 
-### 6. King of the Hill
+### 7. King of the Hill
 * **Goal**: `hill`
 * **Core Mechanics**:
   * In addition to standard checkmate, any player who moves their king onto one of the four center squares—**d4 (35), e4 (36), d5 (27), or e5 (28)**—wins the game immediately.
   * Kings cannot move into or through check; the central square must be legally accessible.
 
-### 7. Giveaway (Antichess / Losing Chess)
+### 8. Giveaway (Antichess / Losing Chess)
 * **Goal**: `giveaway`
 * **Core Mechanics**:
   * **Mandatory Captures**: Whenever a capture is possible on a player's turn, that player *must* make a capture (`forcedCapture: true`). Non-capturing moves are strictly illegal if any capture exists.
@@ -95,7 +105,7 @@ Chess Sandbox ships with eight built-in presets. Each preset configures the 13 r
   * **Victory Condition**: A player wins by losing all of their pieces, or by having no legal moves left on their turn (stalemate is a win for the stalemated player).
   * **Assistance**: Eligible-piece marking (`markEligiblePieces: true`) is enabled by default to highlight only the pieces with legal capture moves.
 
-### 8. Wild Knights
+### 9. Wild Knights
 * **Goal**: `checkmate`
 * **Core Mechanics**:
   * **Super Knights** (`superKnights: true`): Knights retain their traditional L-shaped jumps (2 by 1) and also gain king-like 1-square steps in all eight directions.
@@ -103,9 +113,9 @@ Chess Sandbox ships with eight built-in presets. Each preset configures the 13 r
 
 ---
 
-## The 13 Customizable Rule Switches
+## The 15 Customizable Rule Switches
 
-Every preset is a combination of 13 independent flags in the [`Rules`](file:///Users/jhalim/dev/chess-sandbox/chess-lab/lib/chess/engine.ts#L5-L19) type:
+Every preset is a combination of 15 independent flags in the [`Rules`](file:///Users/jhalim/dev/chess-sandbox/chess-lab/lib/chess/engine.ts#L5-L20) type:
 
 ```typescript
 export type Rules = {
@@ -114,8 +124,9 @@ export type Rules = {
   duckChess: boolean;
   pieceDrops: boolean;
   atomic: boolean;
-  markEligiblePieces: boolean;
   dangerWarnings: boolean;
+  moveScoring: boolean;
+  markEligiblePieces: boolean;
   forcedCapture: boolean;
   castling: boolean;
   enPassant: boolean;
@@ -150,28 +161,31 @@ export type Rules = {
 ### 6. `dangerWarnings`
 * Beginner assistance switch. Displays warning indicators (`!`) on friendly pieces that can be captured by the opponent on the next move. When selecting a piece to move, highlights dangerous destination squares where the moving piece can be eaten, and displays a warning (`⚠`) plus exposed piece outline when a move vacates cover and exposes another friendly piece to capture. Does not alter move legality or AI search.
 
-### 7. `markEligiblePieces`
+### 7. `moveScoring`
+* Coach and move evaluation assistance switch. Calculates real-time positional scores for legal candidate moves using depth-2 minimax search, sorts and ranks the top 5 best moves (`#1` to `#5`), provides interactive quick-select coach chips, and displays on-board rank badges and pawn-unit score tags (`+1.4`, `-0.8`, `+M1`). Does not alter move legality or AI search.
+
+### 8. `markEligiblePieces`
 * UI visual assistance switch. Highlights pieces on the board that currently possess legal moves. When `forcedCapture` is active, highlights only the pieces capable of capturing. Does not alter move legality or AI search.
 
-### 8. `forcedCapture`
+### 9. `forcedCapture`
 * If any capture is available, non-capturing moves are filtered out. If multiple captures exist, any of them may be selected.
 
-### 9. `castling`
+### 10. `castling`
 * Allows O-O and O-O-O when king and rook have not moved, squares between are empty, and king does not pass through or land in check. Automatically disabled when `randomStart` is not `'off'`.
 
-### 10. `enPassant`
+### 11. `enPassant`
 * Allows pawns to capture an enemy pawn that just advanced two squares on the immediately preceding turn.
 
-### 11. `doubleStep`
+### 12. `doubleStep`
 * Allows pawns on their starting rank (rank 2 for White, rank 7 for Black) to advance two squares forward if both intermediate and destination squares are empty.
 
-### 12. `backwardCapture`
+### 13. `backwardCapture`
 * Grants pawns the ability to capture diagonally backward one square (1 rank backward, 1 file left/right). Does not permit backward quiet moves.
 
-### 13. `superKnights`
+### 14. `superKnights`
 * Grants knights all standard knight jumps plus one-square steps in all eight directions (horizontal, vertical, diagonal).
 
-### 14. `promotion`
+### 15. `promotion`
 * `'choice'`: Player chooses Queen, Rook, Bishop, or Knight upon reaching the 8th rank.
 * `'q'`: Automatically promotes to Queen.
 * `'n'`: Automatically promotes to Knight (useful for tactical variant setups).

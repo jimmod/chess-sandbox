@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { initialPosition, legalMoves, applyMove, CLASSIC, outcome, inCheck, squareIndex, PRESETS, emptyPockets, notation, legalDuckSquares, threatenedPieces, analyzeMoveDanger } from '../lib/chess/engine.ts';
 import type { Position, Rules, Move } from '../lib/chess/engine.ts';
-import { chooseMove } from '../lib/chess/ai.ts';
+import { chooseMove, evaluatePositionMoves } from '../lib/chess/ai.ts';
 function play(p: Position, from: string, to: string, r: Rules = CLASSIC) { const m = legalMoves(p, r).find(m => m.from === squareIndex(from) && m.to === squareIndex(to)); assert.ok(m, `${from}-${to}`); return applyMove(p, m); }
 function perft(p: Position, depth: number): number { if (!depth) return 1; return legalMoves(p, CLASSIC).reduce((n, m) => n + perft(applyMove(p, m), depth - 1), 0); }
 const bare = (): Position => ({ board: Array(64).fill(null), turn: 'w', rights: '', ep: null, halfmove: 0, ply: 0 });
@@ -496,6 +496,59 @@ test('analyzeMoveDanger recognizes atomic explosion threats', () => {
   // White queen on e2 is adjacent to e3, so in atomic chess White queen is threatened by blast!
   const threatened = threatenedPieces(p2, atomicRules, 'w');
   assert.ok(threatened.has(52)); // e2 queen is in blast radius of e3 capture!
+});
+
+test('Learning Mode preset contains coaching, danger warnings, move scoring, and marked eligible pieces', () => {
+  const learningPreset = PRESETS.find(p => p.id === 'learning');
+  assert.ok(learningPreset, 'Learning mode preset must exist');
+  assert.equal(learningPreset.name, 'Learning Mode');
+  assert.equal(learningPreset.rules.dangerWarnings, true);
+  assert.equal(learningPreset.rules.moveScoring, true);
+  assert.equal(learningPreset.rules.markEligiblePieces, true);
+  assert.equal(learningPreset.rules.goal, 'checkmate');
+});
+
+test('evaluatePositionMoves returns sorted moves, ranks top 5, detects checkmate, and identifies blunders', () => {
+  const learningRules = PRESETS.find(p => p.id === 'learning')!.rules;
+
+  // 1. Initial position: evaluate opening moves
+  const startPos = initialPosition(CLASSIC);
+  const evals = evaluatePositionMoves(startPos, learningRules);
+  assert.ok(evals.length === 20, 'Opening has 20 legal moves');
+
+  // Verify moves are strictly sorted descending by score
+  for (let i = 0; i < evals.length - 1; i++) {
+    assert.ok(evals[i].score >= evals[i + 1].score, `Rank ${evals[i].rank} score ${evals[i].score} must be >= rank ${evals[i + 1].rank} score ${evals[i + 1].score}`);
+  }
+
+  // Verify top 5 flags
+  const topFive = evals.filter(e => e.isTopFive);
+  assert.equal(topFive.length, 5);
+  assert.equal(evals[0].rank, 1);
+  assert.equal(evals[0].quality, 'best');
+
+  // 2. Immediate checkmate position: Black delivers Fool's mate with Qh4#
+  let matePos = initialPosition();
+  for (const [a, b] of [['f2','f3'],['e7','e5'],['g2','g4']]) matePos = play(matePos, a, b);
+  const mateEvals = evaluatePositionMoves(matePos, learningRules);
+  const bestMateMove = mateEvals[0];
+  assert.equal(bestMateMove.rank, 1);
+  assert.equal(bestMateMove.formattedScore, '+M1');
+  assert.equal(bestMateMove.score, 100000);
+  assert.equal(bestMateMove.label, 'Qh4#');
+
+  // 3. Blunder identification: giving away queen for free vs saving it
+  const blunderPos = bare();
+  blunderPos.turn = 'w';
+  blunderPos.board[60] = { color: 'w', kind: 'k' };
+  blunderPos.board[4] = { color: 'b', kind: 'k' };
+  blunderPos.board[52] = { color: 'w', kind: 'q' }; // e2 queen
+  blunderPos.board[36] = { color: 'b', kind: 'r' }; // e4 rook (attacks e2 queen if moving onto e-file)
+  blunderPos.board[27] = { color: 'b', kind: 'p' }; // d5 pawn (attacks e4/c4)
+  const blunderEvals = evaluatePositionMoves(blunderPos, learningRules);
+  assert.ok(blunderEvals.length > 0);
+  const worstMove = blunderEvals[blunderEvals.length - 1];
+  assert.equal(worstMove.quality, 'blunder');
 });
 
 

@@ -1,8 +1,8 @@
-import { applyMove, legalMoves, outcome, POCKET_KINDS, attacked, opposite, candidateDuckSquares, legalDuckSquares } from './engine.ts';
+import { applyMove, legalMoves, outcome, POCKET_KINDS, attacked, opposite, candidateDuckSquares, legalDuckSquares, notation } from './engine.ts';
 import type { Position, Rules, Move } from './engine.ts';
 export type Difficulty = 'easy' | 'medium' | 'hard';
 const values = { p: 100, n: 320, b: 335, r: 500, q: 900, k: 20000 };
-function evaluate(pos: Position, rules: Rules): number {
+export function evaluate(pos: Position, rules: Rules): number {
   let score = 0;
   pos.board.forEach((p, i) => {
     if (!p) return;
@@ -144,3 +144,117 @@ export function chooseMove(pos: Position, rules: Rules, difficulty: Difficulty, 
   }
   return best;
 }
+
+export type MoveQuality = 'best' | 'excellent' | 'good' | 'inaccuracy' | 'mistake' | 'blunder';
+
+export type EvaluatedMove = {
+  move: Move;
+  score: number;
+  formattedScore: string;
+  rank: number;
+  isTopFive: boolean;
+  quality: MoveQuality;
+  label: string;
+};
+
+export function evaluatePositionMoves(pos: Position, rules: Rules): EvaluatedMove[] {
+  const moves = legalMoves(pos, rules);
+  if (!moves.length || outcome(pos, rules, moves)) return [];
+
+  function completeDuckMove(p: Position, m: Move): Move {
+    if (!rules.duckChess || m.duck !== undefined) return m;
+    const after = applyMove(p, m, rules);
+    const sqs = candidateDuckSquares(after, p.duck);
+    return { ...m, duck: sqs[0] ?? legalDuckSquares(p, after.board)[0] };
+  }
+
+  const rawScored: { move: Move; score: number }[] = [];
+
+  for (const rawMove of moves) {
+    const m = completeDuckMove(pos, rawMove);
+
+    if (rules.duckChess && pos.board[m.to]?.kind === 'k') {
+      rawScored.push({ move: m, score: 100000 });
+      continue;
+    }
+    const nextPos = applyMove(pos, m, rules);
+    if (rules.atomic && !nextPos.board.some(p => p?.color === opposite(pos.turn) && p.kind === 'k')) {
+      rawScored.push({ move: m, score: 100000 });
+      continue;
+    }
+
+    const oppRawMoves = legalMoves(nextPos, rules);
+    const end = outcome(nextPos, rules, oppRawMoves);
+    if (end) {
+      if (end.winner === pos.turn) rawScored.push({ move: m, score: 100000 });
+      else if (end.winner === null) rawScored.push({ move: m, score: 0 });
+      else rawScored.push({ move: m, score: -100000 });
+      continue;
+    }
+
+    let worstCaseForUs = Infinity;
+    for (const omRaw of oppRawMoves) {
+      const om = completeDuckMove(nextPos, omRaw);
+      if (rules.duckChess && nextPos.board[om.to]?.kind === 'k') {
+        worstCaseForUs = -100000;
+        break;
+      }
+      const oppAfter = applyMove(nextPos, om, rules);
+      if (rules.atomic && !oppAfter.board.some(p => p?.color === pos.turn && p.kind === 'k')) {
+        worstCaseForUs = -100000;
+        break;
+      }
+      const oppEnd = outcome(oppAfter, rules);
+      let replyScore: number;
+      if (oppEnd) {
+        if (oppEnd.winner === opposite(pos.turn)) replyScore = -100000;
+        else if (oppEnd.winner === null) replyScore = 0;
+        else replyScore = 100000;
+      } else {
+        replyScore = evaluate(oppAfter, rules);
+      }
+      if (replyScore < worstCaseForUs) {
+        worstCaseForUs = replyScore;
+      }
+    }
+
+    rawScored.push({
+      move: m,
+      score: worstCaseForUs === Infinity ? evaluate(nextPos, rules) : worstCaseForUs,
+    });
+  }
+
+  rawScored.sort((a, b) => b.score - a.score);
+  const topScore = rawScored[0].score;
+
+  return rawScored.map((item, idx) => {
+    const rank = idx + 1;
+    const diff = topScore - item.score;
+    let quality: MoveQuality;
+    if (diff === 0) quality = 'best';
+    else if (diff <= 35) quality = 'excellent';
+    else if (diff <= 90) quality = 'good';
+    else if (diff <= 200) quality = 'inaccuracy';
+    else if (diff <= 400) quality = 'mistake';
+    else quality = 'blunder';
+
+    let formattedScore: string;
+    if (item.score >= 90000) formattedScore = '+M1';
+    else if (item.score <= -90000) formattedScore = '-M1';
+    else {
+      const val = (item.score / 100).toFixed(1);
+      formattedScore = item.score > 0 ? `+${val}` : val === '-0.0' ? '0.0' : val;
+    }
+
+    return {
+      move: item.move,
+      score: item.score,
+      formattedScore,
+      rank,
+      isTopFive: rank <= 5,
+      quality,
+      label: notation(pos, item.move, rules),
+    };
+  });
+}
+

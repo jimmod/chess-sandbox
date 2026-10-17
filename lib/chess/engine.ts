@@ -10,6 +10,7 @@ export type Rules = {
   atomic: boolean;
   markEligiblePieces: boolean;
   dangerWarnings: boolean;
+  moveScoring: boolean;
   forcedCapture: boolean;
   castling: boolean;
   enPassant: boolean;
@@ -24,7 +25,7 @@ export type Pockets = Record<Color, Record<PocketKind, number>>;
 export const emptyPockets = (): Pockets => ({ w: { p: 0, n: 0, b: 0, r: 0, q: 0 }, b: { p: 0, n: 0, b: 0, r: 0, q: 0 } });
 export type Move = { drop?: PocketKind; duck?: number; from: number; to: number; promotion?: Kind; ep?: number; rook?: [number, number] };
 export type Position = { pockets?: Pockets; duck?: number | null; board: (Piece | null)[]; turn: Color; rights: string; ep: number | null; halfmove: number; ply: number; lastExplosion?: number[] | null };
-export const CLASSIC: Rules = { goal: 'checkmate', randomStart: 'off', duckChess: false, pieceDrops: false, atomic: false, markEligiblePieces: false, dangerWarnings: false, forcedCapture: false, castling: true, enPassant: true, doubleStep: true, backwardCapture: false, superKnights: false, promotion: 'choice' };
+export const CLASSIC: Rules = { goal: 'checkmate', randomStart: 'off', duckChess: false, pieceDrops: false, atomic: false, markEligiblePieces: false, dangerWarnings: false, moveScoring: false, forcedCapture: false, castling: true, enPassant: true, doubleStep: true, backwardCapture: false, superKnights: false, promotion: 'choice' };
 export const PRESETS: { id: string; name: string; description: string; icon: string; rules: Rules; details: { summary: string; rules: string[] } }[] = [
   {
     id: 'classic',
@@ -38,6 +39,27 @@ export const PRESETS: { id: string; name: string; description: string; icon: str
         'Protect your king and checkmate the opponent.',
         'Castling, en passant, and two-square pawn openings are enabled.',
         'Draws by stalemate, threefold repetition, 50-move rule, or insufficient material.',
+      ],
+    },
+  },
+  {
+    id: 'learning',
+    name: 'Learning Mode',
+    description: 'Interactive coach & best moves',
+    icon: '🎓',
+    rules: {
+      ...CLASSIC,
+      dangerWarnings: true,
+      moveScoring: true,
+      markEligiblePieces: true,
+    },
+    details: {
+      summary: 'Interactive coaching mode for beginners with real-time threat warnings and top 5 move evaluations.',
+      rules: [
+        'Top 5 best moves are ranked, scored, and highlighted with interactive coach chips.',
+        'Displays real-time positional scores (in pawn units) for candidate moves.',
+        'Threat warnings highlight pieces in danger and warn against uncovering friendly pieces.',
+        'Marked pieces show all units with legal moves available.',
       ],
     },
   },
