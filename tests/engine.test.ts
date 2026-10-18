@@ -521,11 +521,15 @@ test('evaluatePositionMoves returns sorted moves, ranks top 5, detects checkmate
     assert.ok(evals[i].score >= evals[i + 1].score, `Rank ${evals[i].rank} score ${evals[i].score} must be >= rank ${evals[i + 1].rank} score ${evals[i + 1].score}`);
   }
 
-  // Verify top 5 flags and classical opening quality
+  // Verify top 3 and top 5 flags and classical opening quality
+  const topThree = evals.filter(e => e.isTopThree);
+  assert.equal(topThree.length, 3, 'Top 3 moves count should be 3');
   const topFive = evals.filter(e => e.isTopFive);
   assert.equal(topFive.length, 5);
   assert.equal(evals[0].rank, 1);
   assert.equal(evals[0].quality, 'best');
+  const topThreeLabels = topThree.map(e => e.label);
+  assert.ok(topThreeLabels.includes('e4') || topThreeLabels.includes('d4'), 'Top 3 opening moves should include central pawn advance');
   const topFiveLabels = topFive.map(e => e.label);
   assert.ok(topFiveLabels.includes('e4'), 'Top 5 opening moves should include e4');
   assert.ok(topFiveLabels.includes('d4'), 'Top 5 opening moves should include d4');

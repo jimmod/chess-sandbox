@@ -281,122 +281,140 @@
   .square > span.danger-move-target,
   .square > span.danger-capture-target,
   .uncover-marker,
-  .square.will-be-exposed,
-  .top-move-piece-badge.rank-1-badge {
+  .square.will-be-exposed {
     animation: none !important;
   }
 }
 
 /* ==========================================================================
-   Coach & Move Scoring Assistance Rules
+   Coach Top 3 Candidate Piece Blocks
+   (Darker green = better option, lighter green = less better option)
    ========================================================================== */
-.top-move-piece-badge {
-  position: absolute !important;
-  bottom: 3px;
-  left: 3px;
-  z-index: 5;
-  font-family: inherit;
-  font-size: 0.625rem;
-  font-weight: 800;
-  line-height: 1;
-  padding: 2px 4px;
-  border-radius: 4px;
-  background: var(--tone-20231f);
-  color: var(--tone-a4ae9a);
-  border: 1px solid var(--tone-373d31);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
-  pointer-events: none;
-  filter: none;
-  white-space: nowrap;
+.square.top-rank-1 {
+  box-shadow: inset 0 0 0 100px rgba(18, 77, 34, 0.76), inset 0 0 0 3px #15803d !important;
+  outline: none !important;
 }
-.top-move-piece-badge.rank-1-badge {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.95), rgba(180, 83, 9, 0.95));
-  color: #ffffff;
-  border-color: #fde68a;
-  box-shadow: 0 0 8px rgba(245, 158, 11, 0.6), 0 2px 4px rgba(0, 0, 0, 0.3);
-  animation: pulse-gold-glow 2s infinite ease-in-out;
+.square.top-rank-2 {
+  box-shadow: inset 0 0 0 100px rgba(34, 139, 34, 0.48), inset 0 0 0 3px #22c55e !important;
+  outline: none !important;
 }
-@keyframes pulse-gold-glow {
-  0%, 100% { box-shadow: 0 0 6px rgba(245, 158, 11, 0.5); }
-  50% { box-shadow: 0 0 12px rgba(245, 158, 11, 0.9), 0 0 4px #fde68a; }
+.square.top-rank-3 {
+  box-shadow: inset 0 0 0 100px rgba(74, 222, 128, 0.28), inset 0 0 0 2.5px #4ade80 !important;
+  outline: none !important;
 }
 
-.eval-badge-container {
-  position: absolute !important;
-  bottom: 3px;
-  right: 3px;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  z-index: 6;
-  pointer-events: none;
-  filter: none;
-  white-space: nowrap;
-  max-width: calc(100% - 6px);
+.square.top-rank-1:hover {
+  box-shadow: inset 0 0 0 100px rgba(22, 101, 52, 0.88), inset 0 0 0 3px #22c55e !important;
 }
-.eval-rank-tag {
-  font-size: 0.58rem;
-  font-weight: 800;
-  line-height: 1;
-  padding: 1.5px 3.5px;
-  border-radius: 3px;
-  color: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-  filter: none;
+.square.top-rank-2:hover {
+  box-shadow: inset 0 0 0 100px rgba(34, 160, 45, 0.62), inset 0 0 0 3px #4ade80 !important;
 }
-.eval-rank-tag.rank-1 {
-  background: #d97706;
-  border: 1px solid #fde68a;
-}
-.eval-rank-tag.rank-2 {
-  background: #059669;
-  border: 1px solid #6ee7b7;
-}
-.eval-rank-tag.rank-3 {
-  background: #0284c7;
-  border: 1px solid #7dd3fc;
-}
-.eval-rank-tag.rank-4,
-.eval-rank-tag.rank-5 {
-  background: var(--tone-363e30);
-  border: 1px solid var(--tone-637055);
+.square.top-rank-3:hover {
+  box-shadow: inset 0 0 0 100px rgba(74, 222, 128, 0.42), inset 0 0 0 3px #86efac !important;
 }
 
-.eval-score-tag {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.58rem;
-  font-weight: 700;
-  line-height: 1;
-  padding: 1.5px 3.5px;
-  border-radius: 3px;
-  background: var(--tone-171918);
-  border: 1px solid var(--tone-373d31);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
-  filter: none;
+.square.top-rank-1 > span.eligible-marker,
+.square.top-rank-2 > span.eligible-marker,
+.square.top-rank-3 > span.eligible-marker {
+  display: none !important;
 }
-@media (max-width: 500px) {
-  .top-move-piece-badge {
-    bottom: 2px;
-    left: 2px;
-    font-size: 0.525rem;
-    padding: 1px 3px;
-    border-radius: 3px;
-  }
-  .eval-badge-container {
-    bottom: 2px;
-    right: 2px;
-    gap: 1.5px;
-    max-width: calc(100% - 4px);
-  }
-  .eval-rank-tag {
-    font-size: 0.5rem;
-    padding: 1px 2.5px;
-  }
-  .eval-score-tag {
-    font-size: 0.5rem;
-    padding: 1px 2.5px;
-  }
+
+/* Subtle outline for eligible pieces not in top 3 */
+.square.eligible-piece:not(.top-rank-1):not(.top-rank-2):not(.top-rank-3) {
+  outline: 2px dashed rgba(205, 242, 143, 0.38) !important;
+  outline-offset: -3px;
 }
+.square.eligible-piece:not(.top-rank-1):not(.top-rank-2):not(.top-rank-3) > span.eligible-marker {
+  opacity: 0.55;
+}
+
+/* ==========================================================================
+   Move Target Quality Colors
+   (Darker Green = Better Move, Darker Red = Worse Move)
+   ========================================================================== */
+.square > span.move-target[class*="target-quality-"] {
+  width: 30%;
+  height: 30%;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* 1. Best move: Darker green */
+.square > span.move-target.target-quality-best {
+  background: #14532d !important;
+  border: 2px solid #22c55e !important;
+  box-shadow: 0 0 9px rgba(34, 197, 94, 0.7);
+}
+.square > span.capture-target.target-quality-best {
+  border-color: #14532d !important;
+  box-shadow: inset 0 0 0 2px #22c55e, 0 0 12px rgba(34, 197, 94, 0.75);
+  background: rgba(20, 83, 45, 0.35) !important;
+}
+
+/* 2. Excellent move: Medium-dark green */
+.square > span.move-target.target-quality-excellent {
+  background: #166534 !important;
+  border: 2px solid #4ade80 !important;
+  box-shadow: 0 0 7px rgba(74, 222, 128, 0.6);
+}
+.square > span.capture-target.target-quality-excellent {
+  border-color: #166534 !important;
+  box-shadow: inset 0 0 0 2px #4ade80, 0 0 10px rgba(74, 222, 128, 0.65);
+  background: rgba(22, 101, 52, 0.28) !important;
+}
+
+/* 3. Good move: Lighter green */
+.square > span.move-target.target-quality-good {
+  background: #22c55e !important;
+  border: 2px solid #86efac !important;
+  box-shadow: 0 0 6px rgba(134, 239, 172, 0.45);
+}
+.square > span.capture-target.target-quality-good {
+  border-color: #22c55e !important;
+  box-shadow: inset 0 0 0 2px #86efac, 0 0 8px rgba(134, 239, 172, 0.5);
+  background: rgba(34, 197, 94, 0.2) !important;
+}
+
+/* 4. Inaccuracy: Amber / Yellow */
+.square > span.move-target.target-quality-inaccuracy {
+  background: #eab308 !important;
+  border: 2px solid #fef08a !important;
+  box-shadow: 0 0 6px rgba(234, 179, 8, 0.45);
+}
+.square > span.capture-target.target-quality-inaccuracy {
+  border-color: #eab308 !important;
+  box-shadow: inset 0 0 0 2px #fef08a, 0 0 8px rgba(234, 179, 8, 0.5);
+  background: rgba(234, 179, 8, 0.2) !important;
+}
+
+/* 5. Mistake: Light Red / Coral */
+.square > span.move-target.target-quality-mistake {
+  background: #ef4444 !important;
+  border: 2px solid #fca5a5 !important;
+  box-shadow: 0 0 7px rgba(239, 68, 68, 0.55);
+}
+.square > span.capture-target.target-quality-mistake {
+  border-color: #ef4444 !important;
+  box-shadow: inset 0 0 0 2px #fca5a5, 0 0 10px rgba(239, 68, 68, 0.6);
+  background: rgba(239, 68, 68, 0.24) !important;
+}
+
+/* 6. Blunder: Darker Red */
+.square > span.move-target.target-quality-blunder {
+  background: #7f1d1d !important;
+  border: 2px solid #dc2626 !important;
+  box-shadow: 0 0 9px rgba(220, 38, 38, 0.7);
+}
+.square > span.capture-target.target-quality-blunder {
+  border-color: #7f1d1d !important;
+  box-shadow: inset 0 0 0 2px #dc2626, 0 0 12px rgba(220, 38, 38, 0.75);
+  background: rgba(127, 29, 29, 0.35) !important;
+}
+
+.square:hover > span.move-target[class*="target-quality-"],
+.square:focus-visible > span.move-target[class*="target-quality-"] {
+  transform: scale(1.22);
+}
+
 .quality-best {
   color: #34d399 !important;
 }
@@ -488,17 +506,33 @@
   color: var(--tone-e2f4c5);
 }
 .coach-chip.rank-1 {
-  border-color: rgba(245, 158, 11, 0.5);
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), var(--tone-272d23));
+  border-color: rgba(34, 197, 94, 0.7);
+  background: linear-gradient(135deg, rgba(20, 83, 45, 0.5), var(--tone-272d23));
 }
 .coach-chip.rank-1:hover {
-  border-color: #fbbf24;
-  box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+  border-color: #22c55e;
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+}
+.coach-chip.rank-2 {
+  border-color: rgba(34, 197, 94, 0.45);
+  background: linear-gradient(135deg, rgba(22, 101, 52, 0.3), var(--tone-272d23));
+}
+.coach-chip.rank-2:hover {
+  border-color: #4ade80;
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.45);
+}
+.coach-chip.rank-3 {
+  border-color: rgba(74, 222, 128, 0.35);
+  background: linear-gradient(135deg, rgba(74, 222, 128, 0.16), var(--tone-272d23));
+}
+.coach-chip.rank-3:hover {
+  border-color: #86efac;
+  box-shadow: 0 0 8px rgba(134, 239, 172, 0.45);
 }
 .chip-rank {
   font-size: 0.7rem;
   font-weight: 700;
-  color: #fbbf24;
+  color: #4ade80;
 }
 .chip-label {
   font-family: inherit;

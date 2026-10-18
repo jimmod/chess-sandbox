@@ -269,6 +269,7 @@ export type EvaluatedMove = {
   score: number;
   formattedScore: string;
   rank: number;
+  isTopThree: boolean;
   isTopFive: boolean;
   quality: MoveQuality;
   label: string;
@@ -345,6 +346,7 @@ export function evaluatePositionMoves(pos: Position, rules: Rules): EvaluatedMov
       score: item.score,
       formattedScore,
       rank,
+      isTopThree: rank <= 3,
       isTopFive: rank <= 5,
       quality,
       label: notation(pos, item.move, rules),

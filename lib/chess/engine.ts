@@ -54,12 +54,12 @@ export const PRESETS: { id: string; name: string; description: string; icon: str
       markEligiblePieces: true,
     },
     details: {
-      summary: 'Interactive coaching mode for beginners with real-time threat warnings and top 5 move evaluations.',
+      summary: 'Interactive coaching mode for beginners with real-time threat warnings and top 3 move recommendations.',
       rules: [
-        'Top 5 best moves are ranked, scored, and highlighted with interactive coach chips.',
-        'Displays real-time positional scores (in pawn units) for candidate moves.',
+        'Top 3 best moves are highlighted on piece squares using darker to lighter green color blocks.',
+        'Move targets are color-coded: darker green for better moves, darker red for blunders.',
+        'Interactive coach chips below the board let you select and preview the top 3 moves.',
         'Threat warnings highlight pieces in danger and warn against uncovering friendly pieces.',
-        'Marked pieces show all units with legal moves available.',
       ],
     },
   },

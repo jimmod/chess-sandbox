@@ -172,15 +172,15 @@ When enabled:
 - **Uncovered piece warnings**: If moving a piece vacates a square that leaves a previously covered friendly piece exposed to opponent capture (e.g., discovered attacks or relative pins), the move destination displays an amber warning emblem (`uncover-marker`). Hovering or focusing the destination square highlights the piece that will be left exposed with a pulsed amber-dashed outline and an "Exposed" tag.
 - An interactive status banner below the board summarizes current threats and dynamic move safety.
  
-## Move scoring and top-5 best move recommendations (coach assistance)
+## Move scoring and top-3 best move recommendations (coach assistance)
 
 `Rules.moveScoring` is a visual learning assistance option that calculates real-time positional evaluations for legal candidate moves using `evaluatePositionMoves(pos, rules)`. It defaults to false and is enabled by default in the **Learning Mode** preset, or toggled on demand in the rule customizer.
 
 When enabled:
 - **Full engine minimax scoring with Piece-Square Tables (PST) and king safety**: Evaluates each candidate move using the engine's alpha-beta minimax search (`searchMinimax`) across 3-4 plies (adaptive reply depth). Uses classical piece-square tables (PSTs) to reward central space control (`e4`, `d4`, `c4`, `Nf3`, `Nc3`), piece development, castled king safety, and open lines, while heavily penalizing flank pushes (`a4`, `h4`, `g4`), rim knights, hanging pieces, and tactical blunders.
-- **Top 5 ranked moves**: Moves are sorted strictly descending by engine score, highlighting the top 5 moves (`#1` to `#5`).
-- **Interactive Coach Chips**: An interactive bar below the board displays the top 5 moves as chips showing rank, algebraic notation, and score (e.g., `★ #1 e4 (+0.5)`, `#2 d4 (+0.5)`). Clicking any chip selects that piece and highlights the destination square.
-- **On-board rank & score badges**: Pieces with top moves display rank pips (`★ #1`, `#2`). When a piece is selected, its destination squares display rank badges and formatted score tags (`+0.5`, `-3.2`, `+M1`).
+- **Top 3 ranked moves**: Candidate moves are sorted strictly descending by engine score, highlighting the top 3 moves with intuitive color blocks on piece squares (darker green for #1 best option, medium green for #2, lighter green for #3) without distracting text tags.
+- **Move Target Quality Spectrum**: When a piece is selected, destination dots and capture rings are color-coded along a smooth quality spectrum: darker green for best moves, medium green for excellent, lighter green for good, amber for inaccuracies, light red for mistakes, and darker red for blunders. Board squares remain clean and free from clutter.
+- **Interactive Coach Chips**: An interactive bar below the board displays the top 3 moves as chips showing rank, algebraic notation, and score (e.g., `★ #1 e4 (+0.5)`, `#2 d4 (+0.5)`). Clicking any chip selects that piece and highlights the destination square. Hovering over any target square displays its exact score in the coach bar header.
 - **Move quality classifications**: Candidate moves are categorized into `best` (rank 1), `excellent` (within 0.35 pawns), `good` (within 0.9 pawns), `inaccuracy` (within 2.0 pawns), `mistake` (within 4.0 pawns), and `blunder` (> 4.0 pawns lost).
 
 ## Random player side

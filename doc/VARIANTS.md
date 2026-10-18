@@ -13,7 +13,7 @@ Chess Sandbox ships with nine built-in presets. Each preset configures the 15 ru
 | Preset | Icon | Key Rules / Mechanics | Primary Goal |
 | --- | :---: | --- | --- |
 | **Classic** | ♔ | Standard FIDE chess rules, castling, en passant, pawn double-step | `checkmate` |
-| **Learning Mode** | 🎓 | Threat warnings, top 5 move recommendations, move scores, marked pieces | `checkmate` |
+| **Learning Mode** | 🎓 | Threat warnings, top 3 move recommendations, color-coded quality targets | `checkmate` |
 | **Duck Chess** | 🦆 | Neutral Duck blocker, 2-phase move (piece + duck), capture the king | `capture` |
 | **Crazyhouse** | ♜ | Captured pieces enter reserves; drops allowed on empty squares | `checkmate` |
 | **Atomic Chess** | 💥 | Captures cause 3x3 explosions destroying non-pawns; connected kings | `checkmate` / King blast |
@@ -39,10 +39,10 @@ Chess Sandbox ships with nine built-in presets. Each preset configures the 15 ru
 * **Goal**: `checkmate`
 * **Rules**: Standard FIDE rules with real-time coaching assistance enabled: `dangerWarnings: true`, `moveScoring: true`, and `markEligiblePieces: true`.
 * **Core Mechanics**:
-  * **Top 5 Move Recommendations**: Automatically calculates and ranks the top 5 moves for the position. Interactive coach chips allow the player to select any of the top 5 moves with a single click.
-  * **Move Scoring**: Evaluates candidate moves via depth-2 minimax search, displaying pawn-unit scores (e.g., `+1.4`, `-0.8`, `+M1`) and quality ratings (`Best`, `Excellent`, `Good`, `Inaccuracy`, `Mistake`, `Blunder`).
+  * **Top 3 Move Recommendations**: Automatically calculates and highlights the top 3 moves with darker to lighter green square blocks on pieces. Interactive coach chips allow the player to select any of the top 3 moves with a single click.
+  * **Color-Coded Move Quality**: Evaluates candidate move destinations along a spectrum: darker green for best moves, medium green for excellent, lighter green for good, amber for inaccuracies, light red for mistakes, and darker red for blunders.
   * **Threat Warnings**: Flags friendly pieces under immediate capture threat by the opponent with a `!` badge. Warns when selecting a move destination that enters enemy fire or vacates cover and uncovers another friendly piece (`⚠`).
-  * **Marked Pieces**: Visually indicates all pieces possessing legal moves.
+  * **Marked Pieces**: Visually indicates all pieces possessing legal moves with subtle styling.
 
 ### 3. Duck Chess
 * **Goal**: `capture` (no check or checkmate; kings can be captured directly).
@@ -162,7 +162,7 @@ export type Rules = {
 * Beginner assistance switch. Displays warning indicators (`!`) on friendly pieces that can be captured by the opponent on the next move. When selecting a piece to move, highlights dangerous destination squares where the moving piece can be eaten, and displays a warning (`⚠`) plus exposed piece outline when a move vacates cover and exposes another friendly piece to capture. Does not alter move legality or AI search.
 
 ### 7. `moveScoring`
-* Coach and move evaluation assistance switch. Calculates real-time positional scores for legal candidate moves using depth-2 minimax search, sorts and ranks the top 5 best moves (`#1` to `#5`), provides interactive quick-select coach chips, and displays on-board rank badges and pawn-unit score tags (`+1.4`, `-0.8`, `+M1`). Does not alter move legality or AI search.
+* Coach and move evaluation assistance switch. Calculates real-time positional scores for legal candidate moves using depth-2 minimax search, sorts and ranks the top 3 best moves (`#1` to `#3`), provides interactive quick-select coach chips, and colors candidate piece squares (darker to lighter green) and move destination dots (dark green to dark red) without text clutter. Does not alter move legality or AI search.
 
 ### 8. `markEligiblePieces`
 * UI visual assistance switch. Highlights pieces on the board that currently possess legal moves. When `forcedCapture` is active, highlights only the pieces capable of capturing. Does not alter move legality or AI search.
